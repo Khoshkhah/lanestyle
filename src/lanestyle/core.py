@@ -38,11 +38,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+socketserver.TCPServer.allow_reuse_address = True
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 here = str(Path(__file__).resolve().parent)
-with socketserver.TCPServer(("", port), partial(Handler, directory=here)) as httpd:
-    print(f"serving {here} at http://localhost:{port}/  (-> __INDEX__)")
+for p in range(port, port + 20):                       # 8080 busy? hop to the next free port
+    try:
+        httpd = socketserver.TCPServer(("", p), partial(Handler, directory=here))
+    except OSError:
+        continue
+    if p != port:
+        print(f"port {port} busy -> using {p}")
+    print(f"serving {here} at http://localhost:{p}/  (-> __INDEX__)")
     httpd.serve_forever()
+    break
+else:
+    sys.exit(f"no free port in {port}..{port + 19}")
 '''
 
 
