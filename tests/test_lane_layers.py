@@ -4,7 +4,8 @@ import sys
 import duckdb
 import pytest
 
-from lanestyle.core import lane_gdf, render_lane_debug, render_lane_map, road_gdf, write_serve
+from lanestyle.core import (lane_adjacency, lane_gdf, render_lane_debug, render_lane_map, road_gdf,
+                            write_serve)
 
 
 def test_no_mapstyle_dependency():
@@ -44,6 +45,11 @@ def test_road_gdf_oneway(tmp_path):
     assert ow["One Way"] is True and ow["Main St"] is False        # 1<->2 pair → two-way; 3 → one-way
 
 
+def test_lane_adjacency(tmp_path):
+    adj = lane_adjacency(str(_gmns_db(tmp_path / "g.duckdb")))
+    assert adj.get("1_1") == ["1_2"] and adj.get("1_2") == ["1_1"]   # adjacent lanes on link 1 (lane-change)
+
+
 def test_render_lane_map_webgl(tmp_path):
     out = tmp_path / "lanes.html"
     render_lane_map(str(_gmns_db(tmp_path / "g.duckdb")), out)      # webgl by default
@@ -65,6 +71,7 @@ def test_render_lane_debug_webgl(tmp_path):
     assert "osm-carto" in html and "satellite" in html             # base-layer selector
     assert "Main St" in html or "One Way" in html                  # street names in the data
     assert "one-way arrows" in html                                # arrows toggle
+    assert '"adj"' in html and "outgoing" in html                  # lane-connectivity click-highlight
     assert (tmp_path / "serve.py").exists()
 
 
