@@ -112,7 +112,7 @@ self-contained (only the base tiles come from the internet).
 | **Base-layer selector** | osm-carto / Carto light / Carto dark / satellite |
 | **Toggles** | per-use lanes · street names · one-way arrows · route |
 | **Hover a lane** | its `use` / lane # / `edge_id` / width |
-| **Click a lane** | it turns **red**; **all its outgoing lanes turn cyan** (turns + lane-changes); panel shows the outgoing count |
+| **Click a lane** | it turns **red**; **all its outgoing lanes turn cyan** (legal turns + lane-changes; **U-turns excluded**); panel shows the outgoing count |
 | **Street names / one-way arrows** | from the GMNS `link` table (one-way = a link with no reverse pair) |
 | **Route** (yellow) | the `route-lanes` path from step 3 |
 

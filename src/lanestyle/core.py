@@ -139,7 +139,8 @@ def lane_adjacency(gmns_db, mode="driving"):
                 f"JOIN {g}.lane il ON il.link_id = m.ib_link_id "
                 f"  AND (m.start_ib_lane IS NULL OR il.lane_num BETWEEN m.start_ib_lane AND m.end_ib_lane) "
                 f"JOIN {g}.lane ol ON ol.link_id = m.ob_link_id "
-                f"WHERE m.ib_link_id IS NOT NULL AND m.ob_link_id IS NOT NULL").fetchall():
+                f"WHERE m.ib_link_id IS NOT NULL AND m.ob_link_id IS NOT NULL "
+                f"  AND COALESCE(m.type, '') <> 'uturn'").fetchall():   # a U-turn isn't a downstream lane
             adj[str(a)].add(str(b))
     for a, b in con.execute(
             f"SELECT a.lane_id, b.lane_id FROM {g}.lane a JOIN {g}.lane b "
