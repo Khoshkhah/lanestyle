@@ -2,7 +2,7 @@
 import duckdb
 import pytest
 
-from lanestyle.core import lane_layers, render_lane_map, route_layer
+from lanestyle.core import lane_gdf, lane_layers, render_lane_debug, render_lane_map, route_layer
 
 
 def _gmns_lane_db(path):
@@ -45,6 +45,21 @@ def test_render_lane_map(tmp_path):
     render_lane_map(str(_gmns_lane_db(tmp_path / "g.duckdb")), out)
     html = out.read_text()
     assert out.exists() and "lanes_auto" in html and "lanes_bus" in html      # both layers present
+
+
+def test_lane_gdf(tmp_path):
+    gdf = lane_gdf(str(_gmns_lane_db(tmp_path / "g.duckdb")))
+    assert {"use", "lane", "edge_id", "width"}.issubset(gdf.columns)
+    assert (gdf.geometry.geom_type == "Polygon").all() and gdf.crs.to_epsg() == 4326
+    assert set(gdf["use"]) == {"auto", "bus"}
+
+
+def test_render_lane_debug(tmp_path):
+    out = tmp_path / "debug.html"
+    render_lane_debug(str(_gmns_lane_db(tmp_path / "g.duckdb")), out)
+    html = out.read_text()
+    assert out.exists() and "edge_id" in html and "lanes_auto" in html    # tooltip field + toggle
+    assert "GeoJsonTooltip" in html or "aliases" in html.replace(" ", "")  # per-lane inspection wired
 
 
 def test_bad_db_raises(tmp_path):

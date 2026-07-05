@@ -17,13 +17,12 @@ _USE_COLOR = {"auto": "#8fa2b4", "bus": "#e8944a", "bike": "#5ab0e6"}     # lane
 _ROUTE_COLOR = "#ffd400"
 
 
-def lane_layers(gmns_db, mode="driving"):
-    """Read ``gmns_<mode>.lane`` → one ``mapstyle.Layer`` (polygon) per allowed use, each lane a
-    surface polygon (its offset centerline buffered by ½·width, in metric then back to WGS84)."""
+def lane_gdf(gmns_db, mode="driving"):
+    """All lanes of ``gmns_<mode>.lane`` as one GeoDataFrame of **surface polygons** (offset centerline
+    buffered by ½·width, metric → WGS84) with ``use`` / ``lane`` / ``edge_id`` / ``width`` columns."""
     import duckdb
     import geopandas as gpd
     import shapely.wkt as wkt
-    from mapstyle import Layer
 
     g = f"gmns_{mode}"
     con = duckdb.connect(str(gmns_db), read_only=True)
@@ -39,16 +38,25 @@ def lane_layers(gmns_db, mode="driving"):
         f"  'EPSG:3006', 'EPSG:4326', always_xy := true)) "
         f"FROM {g}.lane WHERE geom IS NOT NULL").fetchall()
     con.close()
+    rows = [r for r in rows if r[4] and r[4].startswith(("POLYGON", "MULTIPOLYGON"))]
+    gdf = gpd.GeoDataFrame(
+        {"use": [r[0] for r in rows], "lane": [r[1] for r in rows], "edge_id": [str(r[2]) for r in rows],
+         "width": [round(float(r[3]), 2) for r in rows]},
+        geometry=[wkt.loads(r[4]) for r in rows], crs="EPSG:4326")
+    return gdf
 
+
+def lane_layers(gmns_db, mode="driving"):
+    """Read ``gmns_<mode>.lane`` → one ``mapstyle.Layer`` (polygon) per allowed use, each lane a
+    surface polygon, coloured by use."""
+    from mapstyle import Layer
+
+    gdf = lane_gdf(gmns_db, mode=mode)
     layers = []
     for use, color in _USE_COLOR.items():
-        sub = [(ln, lk, w, geo) for u, ln, lk, w, geo in rows if u == use and geo]
-        if not sub:
-            continue
-        gdf = gpd.GeoDataFrame(
-            {"lane": [s[0] for s in sub], "edge_id": [str(s[1]) for s in sub], "width": [s[2] for s in sub]},
-            geometry=[wkt.loads(s[3]) for s in sub], crs="EPSG:4326")
-        layers.append(Layer(f"lanes_{use}", gdf, kind="polygon", color=color))
+        sub = gdf[gdf["use"] == use]
+        if len(sub):
+            layers.append(Layer(f"lanes_{use}", sub.reset_index(drop=True), kind="polygon", color=color))
     return layers
 
 
@@ -72,4 +80,39 @@ def render_lane_map(gmns_db, out, mode="driving", route_geojson=None, theme="dar
     if route_geojson:
         layers.append(route_layer(route_geojson))
     render_basemap(layers, backend=backend, theme=theme, out=str(out))
+    return out
+
+
+def render_lane_debug(gmns_db, out, mode="driving", route_geojson=None, zoom_start=15):
+    """A **debug** lane map (QA): every lane is inspectable — hover a lane to see its ``use`` / lane # /
+    ``edge_id`` / width, with a hover highlight and per-use toggles; the route (if given) shows its
+    lane count + cost. Built directly on folium so each feature carries a tooltip. Returns ``out``."""
+    import folium
+    import geopandas as gpd
+
+    gdf = lane_gdf(gmns_db, mode=mode)
+    minx, miny, maxx, maxy = gdf.total_bounds
+    m = folium.Map(location=[(miny + maxy) / 2, (minx + maxx) / 2], zoom_start=zoom_start,
+                   tiles="CartoDB dark_matter")
+    for use, color in _USE_COLOR.items():
+        sub = gdf[gdf["use"] == use]
+        if not len(sub):
+            continue
+        folium.GeoJson(
+            sub, name=f"lanes_{use} ({len(sub)})",
+            style_function=lambda f, c=color: {"fillColor": c, "color": c, "weight": 0.4, "fillOpacity": 0.65},
+            highlight_function=lambda f: {"weight": 2.5, "color": "#ffffff", "fillOpacity": 0.9},
+            tooltip=folium.GeoJsonTooltip(fields=["use", "lane", "edge_id", "width"],
+                                          aliases=["use", "lane #", "edge_id", "width (m)"], sticky=True),
+        ).add_to(m)
+    if route_geojson:
+        rgdf = gpd.read_file(str(route_geojson))
+        props = rgdf.drop(columns="geometry").iloc[0].to_dict() if len(rgdf) else {}
+        tip = f"route · {props.get('lanes', '?')} lanes · cost {round(float(props.get('cost', 0) or 0))}"
+        folium.GeoJson(rgdf[["geometry"]], name="route",
+                       style_function=lambda f: {"color": "#ffd400", "weight": 4, "opacity": 0.95},
+                       tooltip=tip).add_to(m)
+    folium.LayerControl(collapsed=False).add_to(m)
+    m.fit_bounds([[miny, minx], [maxy, maxx]])
+    m.save(str(out))
     return out
