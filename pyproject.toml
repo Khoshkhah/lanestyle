@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lanestyle"
+version = "0.1.0"
+description = "Lane-level base map + lane-route visualization — reuses mapstyle's renderer for duckOSM GMNS lanes"
+authors = [{ name = "Kaveh" }]
+requires-python = ">=3.10"
+dependencies = ["mapstyle", "geopandas", "shapely", "duckdb"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
