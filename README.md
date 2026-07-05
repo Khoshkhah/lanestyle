@@ -6,9 +6,10 @@ any renderer beyond folium) — a self-contained lane-level companion to the roa
 lanestyle reads `gmns_<mode>.lane` (the drive-side offset centerline + width), buffers each lane into a
 **surface polygon** coloured by use (auto / bus / bike), and draws it on an interactive **WebGL** map
 (deck.gl + maplibre) with a **base-layer selector** (OSM · osm-carto / Carto light / Carto dark /
-satellite), **click-to-inspect** each lane, **street names** and **one-way arrows**. An optional
-**lane route** (from duckOSM's `route-lanes`) is drawn on top. A `folium` backend is also available
-(`backend="folium"`).
+satellite), **click-to-inspect** each lane, **lane connectivity** (click a lane → it turns red, its
+**outgoing** lanes turn cyan and **U-turns** purple, following the GMNS movement model), **street
+names** and **one-way arrows**. An optional **lane route** (from duckOSM's `route-lanes`) is drawn on
+top. A `folium` backend is also available (`backend="folium"`).
 
 **New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the **full pipeline** — from a raw `.osm.pbf`
 through duckOSM (build → GMNS lanes → optional lane route) to this map, step by step.
@@ -24,7 +25,8 @@ render_lane_debug(DB, "lanes_debug.html", route_geojson="route.geojson")
 ```
 
 `render_lane_debug` adds: hover **and** click each lane for its `use` / lane # / `edge_id` / width,
-per-use toggles, the base-layer selector, street-name labels and one-way arrows.
+**lane connectivity** on click (the lanes it can reach — outgoing cyan, U-turns purple — via
+`lane_adjacency()`), per-use toggles, the base-layer selector, street-name labels and one-way arrows.
 
 ## Install / run
 
