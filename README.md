@@ -1,66 +1,53 @@
 # lanestyle
 
-**Lane-level** base map + lane-route visualization. The workspace lineage is
-[`roadstyle`](../roadstyle) (styles road *lines*) → [`mapstyle`](../mapstyle) (a whole base map) →
-**`lanestyle`** (the *lanes* themselves).
+**Standalone** lane-level maps from a [duckOSM](../duckOSM) **GMNS** db. No dependency on mapstyle (or
+any renderer beyond folium) — a self-contained lane-level companion to the road-level maps.
 
-lanestyle reads a [duckOSM](../duckOSM) **GMNS** db's per-lane geometry (`gmns_<mode>.lane` — the
-drive-side offset centerline + width), buffers each lane into a **surface polygon**, colours it by use
-(auto / bus / bike), and hands the layers to `mapstyle.render_basemap` — so the lane map is a natural
-lane-resolution companion to mapstyle's road map. An optional **lane route** (from duckOSM's
-`route-lanes`) is drawn on top.
-
-It reuses mapstyle as-is; the only mapstyle change is a **backward-compatible** one (its polygon styler
-now honours a solid `Layer.color` override — unset on every existing layer, so those render identically).
+lanestyle reads `gmns_<mode>.lane` (the drive-side offset centerline + width), buffers each lane into a
+**surface polygon** coloured by use (auto / bus / bike), and draws it on an interactive **folium** map
+with a **base-layer selector** (OSM · osm-carto / Carto light / Carto dark / satellite),
+**click-to-inspect** each lane, **street names** and **one-way arrows**. An optional **lane route**
+(from duckOSM's `route-lanes`) is drawn on top.
 
 ```python
-from lanestyle import render_lane_map
+from lanestyle import render_lane_map, render_lane_debug
 
 DB = "../duckOSM/data/db/sodermalm_pbf_gmns.duckdb"   # a duckOSM GMNS db (duckosm gmns)
-render_lane_map(DB, "lanes.html")                     # lanes coloured by use, on a CARTO base
+render_lane_map(DB, "lanes.html")                     # lanes by use + base-layer selector
 
-# overlay a lane-level route (produced by duckOSM):
-#   duckosm route-lanes DB <fromLane> <toLane> -o route.geojson
-render_lane_map(DB, "lanes.html", route_geojson="route.geojson")
+# a route (produced by duckOSM):  duckosm route-lanes DB <from> <to> -o route.geojson
+render_lane_debug(DB, "lanes_debug.html", route_geojson="route.geojson")
 ```
 
-## How it fits the stack
-
-```
-duckOSM  gmns_<mode>.lane  (offset lane centerlines + width)   duckOSM  route-lanes -> route.geojson
-                    │                                                        │
-                    ▼                                                        ▼
-         lanestyle.lane_layers  ──► mapstyle.render_basemap ◄──  lanestyle.route_layer
-                                          │
-                                          ▼
-                                   lane-level map (HTML)
-```
+`render_lane_debug` adds: hover **and** click each lane for its `use` / lane # / `edge_id` / width,
+per-use toggles, the base-layer selector, street-name labels and one-way arrows.
 
 ## Install / run
 
-Deps: `mapstyle`, `geopandas`, `duckdb`. From a checkout:
+Deps: `folium`, `geopandas`, `duckdb` (no mapstyle). From a checkout:
 
 ```bash
-pip install -e .          # (mapstyle installed from ../mapstyle)
-python render_lanes.py ../duckOSM/data/db/sodermalm_pbf_gmns.duckdb lanes.html
+pip install -e .
 python render_lanes.py ../duckOSM/data/db/sodermalm_pbf_gmns.duckdb lanes_debug.html --debug
 ```
 
-Each render also drops a **`serve.py`** next to the HTML (mirrors mapstyle's local-server output) —
-handy to avoid `file://` quirks:
+Each render also drops a **`serve.py`** next to the HTML (auto-hops off a busy port; prints the URL and
+a remote port-forwarding hint):
 
 ```bash
-python serve.py 8080      #  ->  http://localhost:8080/lanes.html
+python serve.py            #  ->  http://localhost:8080/  (redirects to the map)
 ```
+
+## Scale note
+
+The folium/Leaflet backend renders every lane as a vector feature, so it's crisp and inspectable at
+**neighbourhood scale** (e.g. Södermalm's ~3k lanes → ~10 MB). A **whole city** (e.g. Tartu's ~23k
+lanes) produces a heavy page (~50 MB); for that, render a sub-area, or a WebGL backend is the planned
+follow-on.
 
 ## Fidelity
 
-Lane **polygons** are geometrically real (offset centerline buffered by width) but **width is the 3.25 m
-default** where OSM lacks `width:lanes`, so ribbons are uniform. The route overlay is exactly what
-duckOSM's `route-lanes` returns (its permissive-turn caveat carries over). This is a lane-level *map*,
-not a survey-grade HD map.
-
-## Backends
-
-`render_lane_map(..., backend="folium")` (default) is reliable at city scale; `backend="lonboard"`
-(WebGL) scales further but currently has a polygon-fill display quirk to revisit.
+Lane **polygons** are geometrically real (offset centerline buffered by width) but **width is the
+3.25 m default** where OSM lacks `width:lanes`, so ribbons are uniform. Names/arrows come from the GMNS
+`link` table (one-way = a link with no reverse pair). This is a lane-level *map*, not a survey-grade
+HD map.
