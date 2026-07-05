@@ -121,33 +121,38 @@ def road_gdf(gmns_db, mode="driving"):
         geometry=[wkt.loads(r[2]) for r in rows], crs="EPSG:4326")
 
 
-def lane_adjacency(gmns_db, mode="driving"):
-    """``{lane_id: [outgoing lane_ids]}`` — where each lane can go next: **turns** (from the movement
-    table, inbound lane → outbound lane, honouring ``turn:lanes``) + **lane-changes** (adjacent lanes on
-    the same link). Empty if the db has no ``movement`` table."""
+def lane_adjacency(gmns_db, mode="driving", uturns=False):
+    """Lane connectivity per the **GMNS** movement model. ``{lane_id: [outgoing lane_ids]}`` where each
+    lane can go next: **turns** (movement ``type`` left/right/thru — inbound lane → outbound lane, over
+    the GMNS ``start_ib_lane``/``end_ib_lane`` range) + **lane-changes** (adjacent lanes on the link).
+    **U-turns** (``type='uturn'``, a valid GMNS movement type) are kept separate: with ``uturns=True``
+    returns ``(outgoing, uturn_outgoing)`` — two maps — so a viewer can colour them distinctly. Empty
+    if the db has no ``movement`` table. (GMNS ``start_ob_lane``/``end_ob_lane`` are unset in duckOSM →
+    per GMNS "blank = single outbound lane"; we connect to the ob-link lanes.)"""
     import duckdb
     from collections import defaultdict
 
     g = f"gmns_{mode}"
     con = duckdb.connect(str(gmns_db), read_only=True)
     con.execute("INSTALL spatial; LOAD spatial;")
-    adj = defaultdict(set)
+    adj, uadj = defaultdict(set), defaultdict(set)
     if con.execute("SELECT count(*) FROM duckdb_tables() WHERE schema_name=? AND table_name='movement'",
                    [g]).fetchone()[0]:
-        for a, b in con.execute(
-                f"SELECT il.lane_id, ol.lane_id FROM {g}.movement m "
+        for a, b, t in con.execute(
+                f"SELECT il.lane_id, ol.lane_id, m.type FROM {g}.movement m "
                 f"JOIN {g}.lane il ON il.link_id = m.ib_link_id "
                 f"  AND (m.start_ib_lane IS NULL OR il.lane_num BETWEEN m.start_ib_lane AND m.end_ib_lane) "
                 f"JOIN {g}.lane ol ON ol.link_id = m.ob_link_id "
-                f"WHERE m.ib_link_id IS NOT NULL AND m.ob_link_id IS NOT NULL "
-                f"  AND COALESCE(m.type, '') <> 'uturn'").fetchall():   # a U-turn isn't a downstream lane
-            adj[str(a)].add(str(b))
+                f"  AND (m.start_ob_lane IS NULL OR ol.lane_num BETWEEN m.start_ob_lane AND m.end_ob_lane) "
+                f"WHERE m.ib_link_id IS NOT NULL AND m.ob_link_id IS NOT NULL").fetchall():
+            (uadj if t == "uturn" else adj)[str(a)].add(str(b))
     for a, b in con.execute(
             f"SELECT a.lane_id, b.lane_id FROM {g}.lane a JOIN {g}.lane b "
             f"ON a.link_id = b.link_id AND abs(a.lane_num - b.lane_num) = 1").fetchall():
         adj[str(a)].add(str(b))
     con.close()
-    return {k: sorted(v) for k, v in adj.items()}
+    out = {k: sorted(v) for k, v in adj.items()}
+    return (out, {k: sorted(v) for k, v in uadj.items()}) if uturns else out
 
 
 def _base_tiles(m):
@@ -331,7 +336,7 @@ def render_lane_webgl(gmns_db, out, mode="driving", route_geojson=None, debug=Tr
     data = {"center": [round((minx + maxx) / 2, 6), round((miny + maxy) / 2, 6)], "zoom": 14,
             "lanes": _fc(gdf, ["lane_id", "use", "lane", "edge_id", "width"])}
     if debug:
-        data["adj"] = lane_adjacency(gmns_db, mode)      # lane -> outgoing lanes (for click-highlight)
+        data["adj"], data["uturn"] = lane_adjacency(gmns_db, mode, uturns=True)   # outgoing + U-turn (GMNS)
         if names or arrows:
             nfc, afc = _label_points(gmns_db, mode)
             data["names"], data["arrows"] = nfc, afc
@@ -392,8 +397,8 @@ html,body,#map{margin:0;height:100%;width:100%}
 <script>
 const D=/*__DATA__*/null, DEBUG=__DEBUG__;
 const USE={auto:[143,162,180],bus:[232,148,74],bike:[90,176,230]};
-const SEL=[255,64,64], OUT=[40,200,255];      // click a lane: selected -> red, its outgoing lanes -> cyan
-let selLane=null, outSet=new Set();
+const SEL=[255,64,64], OUT=[40,200,255], UT=[190,110,240];   // selected red · outgoing cyan · U-turn purple
+let selLane=null, outSet=new Set(), utSet=new Set();
 const BASES={
  "osm-carto":{t:["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],a:"© OpenStreetMap"},
  "light":{t:["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],a:"© CARTO"},
@@ -412,7 +417,8 @@ const laneFeats={};for(const u in USE)laneFeats[u]={type:"FeatureCollection",
 function layers(){const z=map.getZoom(),L=[];
   for(const u in USE){if(!S["lanes_"+u]||!laneFeats[u].features.length)continue;
     L.push(new deck.GeoJsonLayer({id:"lanes_"+u,data:laneFeats[u],filled:true,stroked:true,
-      getFillColor:f=>{const id=f.properties.lane_id;return id===selLane?SEL:(outSet.has(id)?OUT:USE[u]);},
+      getFillColor:f=>{const id=f.properties.lane_id;
+        return id===selLane?SEL:(utSet.has(id)?UT:(outSet.has(id)?OUT:USE[u]));},
       updateTriggers:{getFillColor:[selLane]},
       getLineColor:[12,14,18,170],lineWidthUnits:"pixels",getLineWidth:0.4,
       lineWidthMinPixels:0.3,pickable:true,autoHighlight:true,highlightColor:[255,255,255,120]}));}
@@ -429,8 +435,9 @@ function layers(){const z=map.getZoom(),L=[];
 const overlay=new deck.MapboxOverlay({interleaved:false,layers:[],
   onClick:info=>{const o=info&&info.object;
     if(o&&o.properties&&o.properties.lane_id!=null){selLane=o.properties.lane_id;
-      outSet=new Set((D.adj&&D.adj[selLane])||[]);}else{selLane=null;outSet=new Set();}
-    refresh();showInfo(o,outSet.size);}});
+      outSet=new Set((D.adj&&D.adj[selLane])||[]);utSet=new Set((D.uturn&&D.uturn[selLane])||[]);}
+    else{selLane=null;outSet=new Set();utSet=new Set();}
+    refresh();showInfo(o,outSet.size,utSet.size);}});
 map.addControl(overlay);
 function refresh(){overlay.setProps({layers:layers()});}
 map.on("load",refresh);map.on("zoom",refresh);
@@ -448,12 +455,14 @@ for(const[k,lab,col]of rows){const l=document.createElement("label");
   l.innerHTML=(col?`<span class="sw" style="background:rgb(${col.join(",")})"></span>`:"")+
     `<input type="checkbox" ${S[k]?"checked":""}> ${lab}`;
   l.querySelector("input").onchange=e=>{S[k]=e.target.checked;refresh();};td.appendChild(l);}
-function showInfo(o,nout){const p=$("info");if(!o){p.style.display="none";return;}const t=o.properties;
+function showInfo(o,nout,nut){const p=$("info");if(!o){p.style.display="none";return;}const t=o.properties;
   p.style.display="block";p.innerHTML=`<b>lane</b><br>use: ${t.use}<br>lane #: ${t.lane}`+
     `<br>edge_id: ${t.edge_id}<br>width: ${t.width} m`+
-    (nout!=null?`<br><span style="color:rgb(40,200,255)">▶ ${nout} outgoing lane(s)</span>`:"");}
+    (nout!=null?`<br><span style="color:rgb(40,200,255)">▶ ${nout} outgoing</span>`+
+      (nut?` · <span style="color:rgb(190,110,240)">${nut} U-turn</span>`:""):"");}
 if(DEBUG){const h=document.createElement("div");h.style.cssText="margin-top:7px;font-size:11px;color:#9fb1c0";
-  h.innerHTML=`click a lane → <span style="color:rgb(255,64,64)">■</span> selected · <span style="color:rgb(40,200,255)">■</span> outgoing`;
+  h.innerHTML=`click a lane → <span style="color:rgb(255,64,64)">■</span> selected · `+
+    `<span style="color:rgb(40,200,255)">■</span> outgoing · <span style="color:rgb(190,110,240)">■</span> U-turn`;
   $("panel").appendChild(h);}
 </script></body></html>
 """

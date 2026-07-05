@@ -72,6 +72,7 @@ def test_render_lane_debug_webgl(tmp_path):
     assert "Main St" in html or "One Way" in html                  # street names in the data
     assert "one-way arrows" in html                                # arrows toggle
     assert '"adj"' in html and "outgoing" in html                  # lane-connectivity click-highlight
+    assert '"uturn"' in html and "U-turn" in html                  # U-turns kept distinct (GMNS type)
     assert (tmp_path / "serve.py").exists()
 
 
