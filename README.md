@@ -10,6 +10,9 @@ satellite), **click-to-inspect** each lane, **street names** and **one-way arrow
 **lane route** (from duckOSM's `route-lanes`) is drawn on top. A `folium` backend is also available
 (`backend="folium"`).
 
+**New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the **full pipeline** — from a raw `.osm.pbf`
+through duckOSM (build → GMNS lanes → optional lane route) to this map, step by step.
+
 ```python
 from lanestyle import render_lane_map, render_lane_debug
 
