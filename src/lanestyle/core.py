@@ -105,6 +105,10 @@ def road_gdf(gmns_db, mode="driving"):
     g = f"gmns_{mode}"
     con = duckdb.connect(str(gmns_db), read_only=True)
     con.execute("INSTALL spatial; LOAD spatial;")
+    if con.execute("SELECT count(*) FROM duckdb_tables() WHERE schema_name=? AND table_name='link'",
+                   [g]).fetchone()[0] == 0:
+        con.close()
+        return gpd.GeoDataFrame({"name": [], "oneway": []}, geometry=[], crs="EPSG:4326")
     rows = con.execute(
         f"WITH tw AS (SELECT a.link_id FROM {g}.link a JOIN {g}.link b "
         f"            ON a.from_node_id=b.to_node_id AND a.to_node_id=b.from_node_id) "
