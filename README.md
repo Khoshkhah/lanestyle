@@ -43,6 +43,14 @@ Deps: `mapstyle`, `geopandas`, `duckdb`. From a checkout:
 ```bash
 pip install -e .          # (mapstyle installed from ../mapstyle)
 python render_lanes.py ../duckOSM/data/db/sodermalm_pbf_gmns.duckdb lanes.html
+python render_lanes.py ../duckOSM/data/db/sodermalm_pbf_gmns.duckdb lanes_debug.html --debug
+```
+
+Each render also drops a **`serve.py`** next to the HTML (mirrors mapstyle's local-server output) —
+handy to avoid `file://` quirks:
+
+```bash
+python serve.py 8080      #  ->  http://localhost:8080/lanes.html
 ```
 
 ## Fidelity

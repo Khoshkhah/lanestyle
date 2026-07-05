@@ -19,5 +19,10 @@ DB = _pos[0] if len(_pos) > 0 else "../duckOSM/data/db/sodermalm_pbf_gmns.duckdb
 OUT = _pos[1] if len(_pos) > 1 else ("lanes_debug.html" if DEBUG else "lanes.html")
 ROUTE = _pos[2] if len(_pos) > 2 else None
 
+from pathlib import Path
+
 (render_lane_debug if DEBUG else render_lane_map)(DB, OUT, route_geojson=ROUTE)
+out = Path(OUT)
 print(f"wrote {OUT}" + (" [debug]" if DEBUG else "") + (f" (with route {ROUTE})" if ROUTE else ""))
+print(f"serve it:  python {out.parent / 'serve.py'} 8080"
+      f"  ->  http://localhost:8080/{out.name}")

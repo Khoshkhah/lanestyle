@@ -62,6 +62,16 @@ def test_render_lane_debug(tmp_path):
     assert "GeoJsonTooltip" in html or "aliases" in html.replace(" ", "")  # per-lane inspection wired
 
 
+def test_serve_py_written(tmp_path):
+    out = tmp_path / "lanes.html"
+    render_lane_map(str(_gmns_lane_db(tmp_path / "g.duckdb")), out)          # serve=True by default
+    serve = tmp_path / "serve.py"
+    assert serve.exists()
+    src = serve.read_text()
+    assert "lanes.html" in src and "http.server" in src                     # points to the map, static server
+    compile(src, str(serve), "exec")                                        # valid Python
+
+
 def test_bad_db_raises(tmp_path):
     bare = tmp_path / "bare.duckdb"
     duckdb.connect(str(bare)).close()

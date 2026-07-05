@@ -16,6 +16,38 @@ _LANE_W = 3.25
 _USE_COLOR = {"auto": "#8fa2b4", "bus": "#e8944a", "bike": "#5ab0e6"}     # lane fill by allowed use
 _ROUTE_COLOR = "#ffd400"
 
+_SERVE_PY = '''#!/usr/bin/env python3
+"""Static server for this lanestyle render.
+   python serve.py [port]   ->  http://localhost:8080/__INDEX__"""
+import sys, http.server, socketserver
+from functools import partial
+from pathlib import Path
+
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        super().end_headers()
+
+
+port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
+here = str(Path(__file__).resolve().parent)
+with socketserver.TCPServer(("", port), partial(Handler, directory=here)) as httpd:
+    print(f"serving {here} at http://localhost:{port}/__INDEX__")
+    httpd.serve_forever()
+'''
+
+
+def write_serve(out_html):
+    """Drop a ``serve.py`` next to ``out_html`` — ``python serve.py [port]`` serves that folder and
+    prints the URL to the map (mirrors mapstyle's local-server output). Returns the serve.py path."""
+    from pathlib import Path
+
+    out_html = Path(out_html)
+    serve = out_html.parent / "serve.py"
+    serve.write_text(_SERVE_PY.replace("__INDEX__", out_html.name))
+    return serve
+
 
 def lane_gdf(gmns_db, mode="driving"):
     """All lanes of ``gmns_<mode>.lane`` as one GeoDataFrame of **surface polygons** (offset centerline
@@ -71,22 +103,26 @@ def route_layer(route_geojson, color=_ROUTE_COLOR):
 
 
 def render_lane_map(gmns_db, out, mode="driving", route_geojson=None, theme="dark",
-                    backend="folium"):
+                    backend="folium", serve=True):
     """Render a lane-level base map to ``out`` (HTML) via mapstyle. Lanes are coloured by use; pass a
-    ``route_geojson`` (from duckOSM's ``route-lanes``) to overlay a routed lane path. Returns ``out``."""
+    ``route_geojson`` (from duckOSM's ``route-lanes``) to overlay a routed lane path. When ``serve``,
+    also drops a ``serve.py`` next to it (``python serve.py [port]``). Returns ``out``."""
     from mapstyle import render_basemap
 
     layers = lane_layers(gmns_db, mode=mode)
     if route_geojson:
         layers.append(route_layer(route_geojson))
     render_basemap(layers, backend=backend, theme=theme, out=str(out))
+    if serve:
+        write_serve(out)
     return out
 
 
-def render_lane_debug(gmns_db, out, mode="driving", route_geojson=None, zoom_start=15):
+def render_lane_debug(gmns_db, out, mode="driving", route_geojson=None, zoom_start=15, serve=True):
     """A **debug** lane map (QA): every lane is inspectable — hover a lane to see its ``use`` / lane # /
     ``edge_id`` / width, with a hover highlight and per-use toggles; the route (if given) shows its
-    lane count + cost. Built directly on folium so each feature carries a tooltip. Returns ``out``."""
+    lane count + cost. Built directly on folium so each feature carries a tooltip. When ``serve``, also
+    drops a ``serve.py`` next to it. Returns ``out``."""
     import folium
     import geopandas as gpd
 
@@ -115,4 +151,6 @@ def render_lane_debug(gmns_db, out, mode="driving", route_geojson=None, zoom_sta
     folium.LayerControl(collapsed=False).add_to(m)
     m.fit_bounds([[miny, minx], [maxy, maxx]])
     m.save(str(out))
+    if serve:
+        write_serve(out)
     return out
