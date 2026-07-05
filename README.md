@@ -4,10 +4,11 @@
 any renderer beyond folium) — a self-contained lane-level companion to the road-level maps.
 
 lanestyle reads `gmns_<mode>.lane` (the drive-side offset centerline + width), buffers each lane into a
-**surface polygon** coloured by use (auto / bus / bike), and draws it on an interactive **folium** map
-with a **base-layer selector** (OSM · osm-carto / Carto light / Carto dark / satellite),
-**click-to-inspect** each lane, **street names** and **one-way arrows**. An optional **lane route**
-(from duckOSM's `route-lanes`) is drawn on top.
+**surface polygon** coloured by use (auto / bus / bike), and draws it on an interactive **WebGL** map
+(deck.gl + maplibre) with a **base-layer selector** (OSM · osm-carto / Carto light / Carto dark /
+satellite), **click-to-inspect** each lane, **street names** and **one-way arrows**. An optional
+**lane route** (from duckOSM's `route-lanes`) is drawn on top. A `folium` backend is also available
+(`backend="folium"`).
 
 ```python
 from lanestyle import render_lane_map, render_lane_debug
@@ -24,7 +25,9 @@ per-use toggles, the base-layer selector, street-name labels and one-way arrows.
 
 ## Install / run
 
-Deps: `folium`, `geopandas`, `duckdb` (no mapstyle). From a checkout:
+Deps: `geopandas`, `duckdb`, `folium` (no mapstyle). The default **WebGL** backend loads deck.gl +
+maplibre from a CDN (self-contained HTML, needs internet at view time for the base tiles). From a
+checkout:
 
 ```bash
 pip install -e .
@@ -38,12 +41,11 @@ a remote port-forwarding hint):
 python serve.py            #  ->  http://localhost:8080/  (redirects to the map)
 ```
 
-## Scale note
+## Scale
 
-The folium/Leaflet backend renders every lane as a vector feature, so it's crisp and inspectable at
-**neighbourhood scale** (e.g. Södermalm's ~3k lanes → ~10 MB). A **whole city** (e.g. Tartu's ~23k
-lanes) produces a heavy page (~50 MB); for that, render a sub-area, or a WebGL backend is the planned
-follow-on.
+The default **WebGL** backend (deck.gl) renders a whole city smoothly in a compact page — Tartu's
+~23k lanes → ~16 MB, Södermalm's ~3k → ~2.4 MB. (The `folium` backend renders every lane as a Leaflet
+vector feature, fine at neighbourhood scale but heavy for a whole city — Tartu is ~60 MB there.)
 
 ## Fidelity
 

@@ -84,7 +84,7 @@ def lane_gdf(gmns_db, mode="driving"):
     rows = con.execute(
         f"SELECT allowed_uses, lane_num, link_id, COALESCE(width, {_LANE_W}) AS w, "
         f"ST_AsText(ST_Transform(ST_Buffer("
-        f"  ST_Transform(geom, 'EPSG:4326', 'EPSG:3006', always_xy := true), COALESCE(width, {_LANE_W})/2.0), "
+        f"  ST_Transform(geom, 'EPSG:4326', 'EPSG:3006', always_xy := true), COALESCE(width, {_LANE_W})/2.0, 2), "
         f"  'EPSG:3006', 'EPSG:4326', always_xy := true)) "
         f"FROM {g}.lane WHERE geom IS NOT NULL").fetchall()
     con.close()
@@ -193,8 +193,8 @@ def _map(gdf, zoom_start):
     return m, (minx, miny, maxx, maxy)
 
 
-def render_lane_map(gmns_db, out, mode="driving", route_geojson=None, zoom_start=14, serve=True):
-    """Render a standalone lane-level map (lanes coloured by use + base-layer selector; optional route)."""
+def _folium_map(gmns_db, out, mode="driving", route_geojson=None, zoom_start=14, serve=True):
+    """folium backend for the lane map (crisp at neighbourhood scale; heavy for a whole city)."""
     import folium
 
     gdf = lane_gdf(gmns_db, mode=mode)
@@ -210,11 +210,9 @@ def render_lane_map(gmns_db, out, mode="driving", route_geojson=None, zoom_start
     return out
 
 
-def render_lane_debug(gmns_db, out, mode="driving", route_geojson=None, zoom_start=15,
-                      names=True, arrows=True, serve=True):
-    """A **debug** lane map (QA): click a lane to see its ``use`` / lane # / ``edge_id`` / width (also on
-    hover), toggle each use, switch **base layers** (osm-carto / dark / light / satellite), and show
-    **street names** + **one-way arrows**. Optional route overlay. Standalone folium. Returns ``out``."""
+def _folium_debug(gmns_db, out, mode="driving", route_geojson=None, zoom_start=15,
+                  names=True, arrows=True, serve=True):
+    """folium backend for the debug lane map (neighbourhood scale)."""
     import folium
 
     gdf = lane_gdf(gmns_db, mode=mode)
@@ -230,3 +228,186 @@ def render_lane_debug(gmns_db, out, mode="driving", route_geojson=None, zoom_sta
     if serve:
         write_serve(out)
     return out
+
+
+# ---------------------------------------------------------------------------------------------------
+# WebGL backend (deck.gl + maplibre, self-contained via CDN) — scales to a whole city, small HTML.
+# ---------------------------------------------------------------------------------------------------
+
+def _fc(gdf, cols):
+    """gdf -> compact GeoJSON dict with coords rounded to 6 dp (~0.1 m) so the embedded JSON stays small."""
+    import shapely.geometry as sg
+
+    def r(c):
+        return [r(x) for x in c] if c and isinstance(c[0], (list, tuple)) else [round(c[0], 6), round(c[1], 6)]
+
+    feats = []
+    for geom, *vals in zip(gdf.geometry, *[gdf[c] for c in cols]):
+        if geom is None or geom.is_empty:
+            continue
+        gm = sg.mapping(geom)
+        gm["coordinates"] = r(gm["coordinates"])
+        feats.append({"type": "Feature", "geometry": gm, "properties": dict(zip(cols, vals))})
+    return {"type": "FeatureCollection", "features": feats}
+
+
+def _label_points(gmns_db, mode):
+    """(name points, arrow points) as GeoJSON — road-name at each named road's midpoint (angled to the
+    road), one-way arrows sampled along one-way roads (angled to travel direction)."""
+    import math
+
+    roads = road_gdf(gmns_db, mode=mode)
+    names, arrows = [], []
+    for nm, oneway, geom in zip(roads["name"], roads["oneway"], roads.geometry):
+        cs = list(geom.coords)
+        if len(cs) < 2:
+            continue
+
+        def ang(a, b):
+            lat = math.radians((a[1] + b[1]) / 2)
+            return round(math.degrees(math.atan2(b[1] - a[1], (b[0] - a[0]) * math.cos(lat))), 1)
+        length_m = geom.length * 111320
+        if nm and length_m > 40:                          # skip tiny link segments — declutter names
+            i = len(cs) // 2
+            a, b = cs[i - 1], cs[i]
+            names.append({"type": "Feature", "properties": {"name": nm, "ang": ang(a, b)},
+                          "geometry": {"type": "Point",
+                                       "coordinates": [round((a[0] + b[0]) / 2, 6), round((a[1] + b[1]) / 2, 6)]}})
+        if oneway:
+            step = max(1, (len(cs) - 1) // 2)
+            for i in range(0, len(cs) - 1, step):
+                a, b = cs[i], cs[i + 1]
+                arrows.append({"type": "Feature", "properties": {"ang": ang(a, b)},
+                               "geometry": {"type": "Point",
+                                            "coordinates": [round((a[0] + b[0]) / 2, 6), round((a[1] + b[1]) / 2, 6)]}})
+    return ({"type": "FeatureCollection", "features": names},
+            {"type": "FeatureCollection", "features": arrows})
+
+
+def render_lane_webgl(gmns_db, out, mode="driving", route_geojson=None, debug=True,
+                      names=True, arrows=True, serve=True):
+    """WebGL (deck.gl + maplibre) lane viewer — scales to a whole city in a small, fast, self-contained
+    HTML. Lanes coloured by use (click a lane for its use / lane # / edge_id / width), a base-layer
+    selector (osm-carto / light / dark / satellite), per-use toggles, street names, one-way arrows, and
+    an optional route. Standalone (CDN deck.gl/maplibre; no mapstyle). Returns ``out``."""
+    import json
+    from pathlib import Path
+
+    gdf = lane_gdf(gmns_db, mode=mode)
+    minx, miny, maxx, maxy = gdf.total_bounds
+    data = {"center": [round((minx + maxx) / 2, 6), round((miny + maxy) / 2, 6)], "zoom": 14,
+            "lanes": _fc(gdf, ["use", "lane", "edge_id", "width"])}
+    if debug and (names or arrows):
+        nfc, afc = _label_points(gmns_db, mode)
+        data["names"], data["arrows"] = nfc, afc
+    if route_geojson:
+        import geopandas as gpd
+        data["route"] = json.loads(gpd.read_file(str(route_geojson))[["geometry"]].to_json())
+    html = (_WEBGL_TEMPLATE
+            .replace("/*__DATA__*/null", json.dumps(data, separators=(",", ":")))
+            .replace("__DEBUG__", "true" if debug else "false")
+            .replace("__NAMES__", "true" if (debug and names) else "false")
+            .replace("__ARROWS__", "true" if (debug and arrows) else "false"))
+    Path(out).write_text(html, encoding="utf-8")
+    if serve:
+        write_serve(out)
+    return out
+
+
+def render_lane_map(gmns_db, out, mode="driving", route_geojson=None, backend="webgl", serve=True):
+    """Lane-level map. ``backend="webgl"`` (default, deck.gl — scales to a city) or ``"folium"``."""
+    if backend == "folium":
+        return _folium_map(gmns_db, out, mode=mode, route_geojson=route_geojson, serve=serve)
+    return render_lane_webgl(gmns_db, out, mode=mode, route_geojson=route_geojson, debug=False, serve=serve)
+
+
+def render_lane_debug(gmns_db, out, mode="driving", route_geojson=None, backend="webgl",
+                      names=True, arrows=True, serve=True):
+    """Debug lane map (click-inspect + base selector + names + arrows). ``backend="webgl"`` (default) or
+    ``"folium"``."""
+    if backend == "folium":
+        return _folium_debug(gmns_db, out, mode=mode, route_geojson=route_geojson, names=names,
+                             arrows=arrows, serve=serve)
+    return render_lane_webgl(gmns_db, out, mode=mode, route_geojson=route_geojson, debug=True,
+                             names=names, arrows=arrows, serve=serve)
+
+
+_WEBGL_TEMPLATE = r"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>lanestyle · lane map</title>
+<link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9/dist.min.js"></script>
+<style>
+html,body,#map{margin:0;height:100%;width:100%}
+#panel{position:absolute;top:10px;right:10px;background:rgba(18,22,28,.92);color:#e6edf3;
+  font:12px/1.45 system-ui,sans-serif;border-radius:10px;padding:10px 12px;max-width:250px;z-index:2;
+  box-shadow:0 6px 20px rgba(0,0,0,.4)}
+#panel h3{margin:0 0 6px;font-size:13px;font-weight:600}
+#bases{margin-bottom:7px}#bases button{margin:1px 2px 1px 0;padding:2px 7px;border:1px solid #3a4656;
+  background:#222a35;color:#bcd;border-radius:6px;cursor:pointer;font:11px system-ui}
+#bases button.on{background:#2f7fd6;color:#fff;border-color:#2f7fd6}
+#toggles label{display:block;margin:2px 0;cursor:pointer}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+#info{margin-top:8px;border-top:1px solid #33404f;padding-top:7px;display:none}
+#info b{color:#7fd0ff}
+</style></head><body>
+<div id="map"></div>
+<div id="panel"><h3>lanestyle</h3><div id="bases"></div><div id="toggles"></div><div id="info"></div></div>
+<script>
+const D=/*__DATA__*/null, DEBUG=__DEBUG__;
+const USE={auto:[143,162,180],bus:[232,148,74],bike:[90,176,230]};
+const BASES={
+ "osm-carto":{t:["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],a:"© OpenStreetMap"},
+ "light":{t:["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],a:"© CARTO"},
+ "dark":{t:["https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"],a:"© CARTO"},
+ "satellite":{t:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],a:"© Esri"}};
+let curBase="osm-carto";
+const bid=n=>"bs_"+n.replace(/[^a-z]/g,"");
+function style(){const sources={},layers=[];for(const n in BASES){const b=BASES[n];
+  sources[bid(n)]={type:"raster",tiles:b.t,tileSize:256,attribution:b.a};
+  layers.push({id:bid(n),type:"raster",source:bid(n),layout:{visibility:n===curBase?"visible":"none"}});}
+  return{version:8,sources,layers};}
+const map=new maplibregl.Map({container:"map",style:style(),center:D.center,zoom:D.zoom});
+const S={lanes_auto:true,lanes_bus:true,lanes_bike:true,names:__NAMES__,arrows:__ARROWS__,route:true};
+const laneFeats={};for(const u in USE)laneFeats[u]={type:"FeatureCollection",
+  features:(D.lanes.features||[]).filter(f=>f.properties.use===u)};
+function layers(){const z=map.getZoom(),L=[];
+  for(const u in USE){if(!S["lanes_"+u]||!laneFeats[u].features.length)continue;
+    L.push(new deck.GeoJsonLayer({id:"lanes_"+u,data:laneFeats[u],filled:true,stroked:true,
+      getFillColor:USE[u],getLineColor:[12,14,18,170],lineWidthUnits:"pixels",getLineWidth:0.4,
+      lineWidthMinPixels:0.3,pickable:true,autoHighlight:true,highlightColor:[255,255,255,120]}));}
+  if(D.route&&S.route)L.push(new deck.GeoJsonLayer({id:"route",data:D.route,stroked:true,filled:false,
+    getLineColor:[255,212,0],lineWidthUnits:"pixels",getLineWidth:4,lineWidthMinPixels:2}));
+  if(DEBUG&&S.arrows&&D.arrows&&z>=15)L.push(new deck.TextLayer({id:"arrows",data:D.arrows.features,
+    getPosition:f=>f.geometry.coordinates,getText:()=>"▶",getAngle:f=>f.properties.ang,
+    getSize:15,getColor:[130,130,130],characterSet:"auto",billboard:false}));
+  if(DEBUG&&S.names&&D.names&&z>=15)L.push(new deck.TextLayer({id:"names",data:D.names.features,
+    getPosition:f=>f.geometry.coordinates,getText:f=>f.properties.name,getAngle:f=>f.properties.ang,
+    getSize:12,getColor:[35,35,40],characterSet:"auto",billboard:false,fontWeight:600,
+    background:true,getBackgroundColor:[255,255,255,190],backgroundPadding:[2,1]}));
+  return L;}
+const overlay=new deck.MapboxOverlay({interleaved:false,layers:[],
+  onClick:info=>showInfo(info&&info.object)});
+map.addControl(overlay);
+function refresh(){overlay.setProps({layers:layers()});}
+map.on("load",refresh);map.on("zoom",refresh);
+const $=i=>document.getElementById(i);
+const bd=$("bases");
+for(const n in BASES){const b=document.createElement("button");b.textContent=n;
+  if(n===curBase)b.className="on";
+  b.onclick=()=>{curBase=n;for(const m in BASES)map.setLayoutProperty(bid(m),"visibility",m===n?"visible":"none");
+    [...bd.children].forEach(c=>c.className=c.textContent===n?"on":"");};bd.appendChild(b);}
+const td=$("toggles"),rows=[["lanes_auto","auto",USE.auto],["lanes_bus","bus",USE.bus],
+  ["lanes_bike","bike",USE.bike]];
+if(DEBUG){rows.push(["names","street names"],["arrows","one-way arrows"]);}
+if(D.route)rows.push(["route","route"]);
+for(const[k,lab,col]of rows){const l=document.createElement("label");
+  l.innerHTML=(col?`<span class="sw" style="background:rgb(${col.join(",")})"></span>`:"")+
+    `<input type="checkbox" ${S[k]?"checked":""}> ${lab}`;
+  l.querySelector("input").onchange=e=>{S[k]=e.target.checked;refresh();};td.appendChild(l);}
+function showInfo(o){const p=$("info");if(!o){p.style.display="none";return;}const t=o.properties;
+  p.style.display="block";p.innerHTML=`<b>lane</b><br>use: ${t.use}<br>lane #: ${t.lane}`+
+    `<br>edge_id: ${t.edge_id}<br>width: ${t.width} m`;}
+</script></body></html>
+"""

@@ -44,21 +44,28 @@ def test_road_gdf_oneway(tmp_path):
     assert ow["One Way"] is True and ow["Main St"] is False        # 1<->2 pair → two-way; 3 → one-way
 
 
-def test_render_lane_map(tmp_path):
+def test_render_lane_map_webgl(tmp_path):
     out = tmp_path / "lanes.html"
-    render_lane_map(str(_gmns_db(tmp_path / "g.duckdb")), out)
-    html = out.read_text()
-    assert out.exists() and "lanes_auto" in html and "leaflet" in html.lower()   # standalone folium/leaflet
+    render_lane_map(str(_gmns_db(tmp_path / "g.duckdb")), out)      # webgl by default
+    html = out.read_text().lower()
+    assert out.exists() and "lanes_auto" in html and "deck.gl" in html and "maplibre" in html
 
 
-def test_render_lane_debug(tmp_path):
+def test_render_lane_map_folium(tmp_path):
+    out = tmp_path / "lanes_f.html"
+    render_lane_map(str(_gmns_db(tmp_path / "g.duckdb")), out, backend="folium")
+    assert "leaflet" in out.read_text().lower()                     # folium backend still available
+
+
+def test_render_lane_debug_webgl(tmp_path):
     out = tmp_path / "debug.html"
     render_lane_debug(str(_gmns_db(tmp_path / "g.duckdb")), out)
     html = out.read_text()
-    assert "edge_id" in html                                       # click/hover inspect fields
-    assert "osm-carto" in html or "OpenStreetMap" in html          # base-layer selector incl. osm-carto
-    assert "One Way" in html or "Main St" in html                  # street names present
-    assert (tmp_path / "serve.py").exists()                        # serve.py dropped
+    assert "edge_id" in html                                       # click-inspect fields
+    assert "osm-carto" in html and "satellite" in html             # base-layer selector
+    assert "Main St" in html or "One Way" in html                  # street names in the data
+    assert "one-way arrows" in html                                # arrows toggle
+    assert (tmp_path / "serve.py").exists()
 
 
 def test_serve_py(tmp_path):
