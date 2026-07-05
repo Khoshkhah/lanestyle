@@ -25,6 +25,14 @@ from pathlib import Path
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ("/", "/index.html"):          # so the root URL just opens the map
+            self.send_response(302)
+            self.send_header("Location", "/__INDEX__")
+            self.end_headers()
+            return
+        super().do_GET()
+
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         super().end_headers()
@@ -33,7 +41,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 here = str(Path(__file__).resolve().parent)
 with socketserver.TCPServer(("", port), partial(Handler, directory=here)) as httpd:
-    print(f"serving {here} at http://localhost:{port}/__INDEX__")
+    print(f"serving {here} at http://localhost:{port}/  (-> __INDEX__)")
     httpd.serve_forever()
 '''
 
