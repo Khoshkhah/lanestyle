@@ -48,7 +48,10 @@ for p in range(port, port + 20):                       # 8080 busy? hop to the n
         continue
     if p != port:
         print(f"port {port} busy -> using {p}")
-    print(f"serving {here} at http://localhost:{p}/  (-> __INDEX__)")
+    print(f"serving {here}")
+    print(f"  open:    http://localhost:{p}/   (-> __INDEX__)")
+    print(f"  REMOTE:  forward port {p}  (VS Code auto-forwards it in the Ports panel; "
+          f"or `ssh -L {p}:localhost:{p} <host>`), then open the URL above")
     httpd.serve_forever()
     break
 else:
