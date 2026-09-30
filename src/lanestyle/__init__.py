@@ -1,7 +1,7 @@
-"""lanestyle — standalone lane-level maps from a duckOSM GMNS db (folium; no mapstyle dependency)."""
-from lanestyle.core import (lane_adjacency, lane_gdf, render_lane_debug, render_lane_map, road_gdf,
-                            write_serve)
+"""lanestyle — lane-level maps on roadstyle: a lane table (from_gmns reads one from a duckOSM GMNS db)
+drawn one line per lane, at its width in metres."""
+from lanestyle.gmns import from_gmns
+from lanestyle.render import lane_settings, render_lanes, write_serve
 
-__version__ = "0.3.0"
-__all__ = ["render_lane_map", "render_lane_debug", "lane_gdf", "lane_adjacency", "road_gdf",
-           "write_serve"]
+__version__ = "0.4.0"
+__all__ = ["from_gmns", "render_lanes", "lane_settings", "write_serve"]

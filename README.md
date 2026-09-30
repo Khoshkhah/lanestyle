@@ -1,60 +1,67 @@
 # lanestyle
 
-**Standalone** lane-level maps from a [duckOSM](../duckOSM) **GMNS** db. No dependency on mapstyle (or
-any renderer beyond folium) — a self-contained lane-level companion to the road-level maps.
+Lane-level maps on [roadstyle](https://github.com/Khoshkhah/roadstyle): every lane is one roadstyle
+line on its own geometry, drawn **exactly its width in metres** from zoom 16 on. roadstyle brings
+the rest: draw order from the OSM `layer` tag, bridges, tunnels, base maps, the filter box, popups,
+arrows and its `rs*` JavaScript API. lanestyle is to lanes what mapstyle is to the full base map.
 
-lanestyle reads `gmns_<mode>.lane` (the drive-side offset centerline + width), buffers each lane into a
-**surface polygon** coloured by use (auto / bus / bike), and draws it on an interactive **WebGL** map
-(deck.gl + maplibre) with a **base-layer selector** (OSM · osm-carto / Carto light / Carto dark /
-satellite), **click-to-inspect** each lane, **lane connectivity** (click a lane → it turns red, its
-**outgoing** lanes turn cyan and **U-turns** purple, following the GMNS movement model), **street
-names** and **one-way arrows**. An optional **lane route** (from duckOSM's `route-lanes`) is drawn on
-top. A `folium` backend is also available (`backend="folium"`).
+Click a lane: it turns **red**, the lanes it leads into **green**, U-turns **purple**. Bus and bike
+lanes are painted over the palette (the *Lane use* colouring).
 
-**New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the **full pipeline** — from a raw `.osm.pbf`
-through duckOSM (build → GMNS lanes → optional lane route) to this map, step by step.
+**New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the full pipeline, from a raw `.osm.pbf`
+through duckOSM to this map.
 
 ```python
-from lanestyle import render_lane_map, render_lane_debug
+import lanestyle as ls
 
-DB = "../duckOSM/data/db/sodermalm_pbf_gmns.duckdb"   # a duckOSM GMNS db (duckosm gmns)
-render_lane_map(DB, "lanes.html")                     # lanes by use + base-layer selector
-
-# a route (produced by duckOSM):  duckosm route-lanes DB <from> <to> -o route.geojson
-render_lane_debug(DB, "lanes_debug.html", route_geojson="route.geojson")
+# the reader: a duckOSM GMNS db (+ the duckOSM db it came from, for bridges / tunnels / layers)
+lanes, turns = ls.from_gmns("data/monaco_gmns.duckdb", source_db="data/monaco.duckdb")
+# the engine: any lane table works, not only GMNS
+ls.render_lanes(lanes, turns=turns, palette="mono").save("lanes.html")
 ```
 
-`render_lane_debug` adds: hover **and** click each lane for its `use` / lane # / `edge_id` / width,
-**lane connectivity** on click (the lanes it can reach — outgoing cyan, U-turns purple — via
-`lane_adjacency()`), per-use toggles, the base-layer selector, street-name labels and one-way arrows.
+## Input: a lane table, the roadstyle way
+
+`lanes` is a GeoDataFrame, one row per lane, each line in the direction of travel:
+
+| Column | Needed? | Meaning |
+|---|---|---|
+| `lane_id`, `geometry`, `highway` | yes | unique id, the lane's centre line, road class |
+| `width_m` | no, 3.25 | lane width in metres |
+| `use` | no, `auto` | `auto`, `bus` or `bike` |
+| `bridge`, `tunnel`, `layer` | no | the lane's level, read as roadstyle reads them |
+| `name` | no | street-name label (`from_gmns` sets it on lane 1 only) |
+| `link_id`, `lane_num`, `turn` | no | shown in the popup |
+
+`turns` (optional) has `from_lane`, `to_lane` and an optional `type` (`uturn` is purple). Other
+`render_lanes` keywords go to `roadstyle.render_edges`, for example a route as an overlay:
+`overlays=[rs.Overlay(route_gdf)]`.
+
+## Settings
+
+roadstyle's own settings apply (`roadstyle.json`, or `settings=`). lanestyle's defaults are in
+[`src/lanestyle/data/lanestyle.json`](src/lanestyle/data/lanestyle.json): lane colours, click
+colours, `default_width_m`, `casing_m`, `width_m_zoom`. Override them the roadstyle way, stating
+only what changes: a `lanestyle.json` in the current folder, or a `"lanes"` key in `settings=`:
+
+```python
+ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d35400"}}})
+```
 
 ## Install / run
 
-Deps: `geopandas`, `duckdb`, `folium` (no mapstyle). The default **WebGL** backend loads deck.gl +
-maplibre from a CDN (self-contained HTML, needs internet at view time for the base tiles). From a
-checkout:
+Needs roadstyle 0.10 (metre widths; until it is released, the `metre-width` branch of roadstyle),
+plus geopandas and duckdb.
 
 ```bash
 pip install -e .
-python render_lanes.py ../duckOSM/data/db/sodermalm_pbf_gmns.duckdb lanes_debug.html --debug
+python render_lanes.py data/monaco_gmns.duckdb lanes.html --source-db data/monaco.duckdb
+python serve.py 8080           # written next to the map; prints the URL
 ```
-
-Each render also drops a **`serve.py`** next to the HTML (auto-hops off a busy port; prints the URL and
-a remote port-forwarding hint):
-
-```bash
-python serve.py            #  ->  http://localhost:8080/  (redirects to the map)
-```
-
-## Scale
-
-The default **WebGL** backend (deck.gl) renders a whole city smoothly in a compact page — Tartu's
-~23k lanes → ~16 MB, Södermalm's ~3k → ~2.4 MB. (The `folium` backend renders every lane as a Leaflet
-vector feature, fine at neighbourhood scale but heavy for a whole city — Tartu is ~60 MB there.)
 
 ## Fidelity
 
-Lane **polygons** are geometrically real (offset centerline buffered by width) but **width is the
-3.25 m default** where OSM lacks `width:lanes`, so ribbons are uniform. Names/arrows come from the GMNS
-`link` table (one-way = a link with no reverse pair). This is a lane-level *map*, not a survey-grade
-HD map.
+Lanes are duckOSM's drive-side offset centre lines. Their **width is 3.25 m** wherever OSM lacks
+`width:lanes`, which today is every lane. Lane-to-lane turns come from GMNS `movement`: where
+`turn:lanes` is untagged, every lane of a road leads into every lane of the next. A lane-level
+*map*, not a survey-grade HD map.

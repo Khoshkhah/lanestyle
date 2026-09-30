@@ -1,0 +1,78 @@
+"""lanestyle: the GMNS reader (from_gmns) and the roadstyle engine (render_lanes)."""
+import json
+import sys
+
+import duckdb
+
+import lanestyle as ls
+
+
+def test_no_mapstyle_dependency():
+    assert "mapstyle" not in sys.modules
+
+
+def _dbs(tmp_path):
+    """A GMNS db: link 1 A->B (2 lanes, lane 2 bus), link 2 B->C (a bridge in the source db),
+    link 3 B->A; movements 1->2 thru from every lane, 1->3 a U-turn from lane 1 only."""
+    gmns, src = tmp_path / "g.duckdb", tmp_path / "s.duckdb"
+    con = duckdb.connect(str(gmns))
+    con.execute("INSTALL spatial; LOAD spatial; CREATE SCHEMA gmns_driving")
+    ln = lambda y: f"ST_GeomFromText('LINESTRING(18.00 {y}, 18.01 {y})')"
+    con.execute("CREATE TABLE gmns_driving.link(link_id BIGINT, name VARCHAR, facility_type VARCHAR, "
+                "from_node_id BIGINT, to_node_id BIGINT)")
+    con.execute("INSERT INTO gmns_driving.link VALUES (8121729169906061189,'Main St','secondary',10,11),"
+                "(2,'Bridge Rd','tertiary',11,12),(3,'Main St','secondary',11,10)")
+    con.execute("CREATE TABLE gmns_driving.lane(lane_id VARCHAR, link_id BIGINT, lane_num BIGINT, "
+                "allowed_uses VARCHAR, width DOUBLE, turn VARCHAR, geom GEOMETRY)")
+    con.execute(f"INSERT INTO gmns_driving.lane VALUES "
+                f"('1_1',8121729169906061189,1,'auto',NULL,'left',{ln(59.30)}),"
+                f"('1_2',8121729169906061189,2,'bus',3.5,NULL,{ln(59.30003)}),"
+                f"('2_1',2,1,'auto',NULL,NULL,{ln(59.31)}),('3_1',3,1,'auto',NULL,NULL,{ln(59.32)})")
+    con.execute("CREATE TABLE gmns_driving.movement(ib_link_id BIGINT, start_ib_lane BIGINT, "
+                "end_ib_lane BIGINT, ob_link_id BIGINT, start_ob_lane INTEGER, end_ob_lane INTEGER, type VARCHAR)")
+    con.execute("INSERT INTO gmns_driving.movement VALUES (8121729169906061189,NULL,NULL,2,NULL,NULL,'thru'),"
+                "(8121729169906061189,1,1,3,NULL,NULL,'uturn')")
+    con.close()
+    con = duckdb.connect(str(src))
+    con.execute("CREATE SCHEMA driving; CREATE TABLE driving.edges(edge_id BIGINT, bridge VARCHAR, "
+                "tunnel VARCHAR, layer VARCHAR)")
+    con.execute("INSERT INTO driving.edges VALUES (8121729169906061189,NULL,NULL,NULL),(2,'yes',NULL,'1'),"
+                "(3,NULL,NULL,NULL)")
+    con.close()
+    return gmns, src
+
+
+def test_from_gmns_lane_table_and_turns(tmp_path):
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    r = lanes.set_index("lane_id")
+    assert r.loc["1_1", "highway"] == "secondary" and r.loc["1_2", "use"] == "bus"
+    assert r.loc["1_1", "name"] == "Main St" and r.loc["1_2", "name"] != r.loc["1_2", "name"]   # NaN: lane 1 only
+    assert r.loc["1_1", "link_id"] == 8121729169906061189                           # exact, not float
+    assert r.loc["2_1", "bridge"] == "yes" and r.loc["2_1", "layer"] == "1"         # from source_db
+    got = set(map(tuple, turns[["from_lane", "to_lane", "type"]].values))
+    assert got == {("1_1", "2_1", "thru"), ("1_2", "2_1", "thru"), ("1_1", "3_1", "uturn")}
+    # without source_db: every lane at ground level
+    assert "bridge" not in ls.from_gmns(gmns)[0].columns
+
+
+def test_render_lanes_metre_widths_uses_and_click(tmp_path):
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    html = ls.render_lanes(lanes, turns=turns).html
+    assert '"__rs_wm"' in html                                    # widths in metres (roadstyle 0.10)
+    assert "Lane use" in html and "#c9783a" in html and "#3f8fc9" not in html   # bus only: no bike
+    t = json.loads(html.split("const T = ", 1)[1].split(", C = ", 1)[0])
+    assert t["1_1"] == [["2_1"], ["3_1"]] and t["1_2"] == [["2_1"], []]
+
+
+def test_settings_override_the_roadstyle_way(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "lanestyle.json").write_text('{"lanes": {"casing_m": 0.1}}')
+    s = ls.lane_settings({"lanes": {"colors": {"bus": "#123456"}}})
+    assert s["casing_m"] == 0.1 and s["colors"]["bus"] == "#123456" and s["colors"]["bike"] == "#3f8fc9"
+
+
+def test_write_serve_index_html_does_not_loop(tmp_path):
+    src = ls.write_serve(tmp_path / "index.html").read_text()
+    assert 'self.path != "/index.html"' in src

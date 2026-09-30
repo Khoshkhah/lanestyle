@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
-"""Render a duckOSM GMNS db as a lane-level map (optionally with a lane route overlay).
+"""Render a duckOSM GMNS db as a lane-level map.
 
 Usage:
-    python render_lanes.py [gmns_db.duckdb] [out.html] [route.geojson] [--debug]
+    python render_lanes.py GMNS_DB OUT.html [--source-db DB] [--mode driving]
 
-  gmns_db      a duckOSM GMNS db (built with `duckosm gmns`); default: Södermalm.
-  out.html     output map; default: lanes.html
-  route.geojson  optional lane route from `duckosm route-lanes <db> <from> <to> -o route.geojson`.
-  --debug      inspectable QA viewer — hover a lane for its use / lane # / edge_id / width + counts.
+  GMNS_DB      a duckOSM GMNS db (built with `duckosm gmns`).
+  OUT.html     the map; a serve.py is written next to it.
+  --source-db  the duckOSM db the GMNS db was made from: bridges, tunnels and layers for the lanes.
 """
-import sys
+import argparse
 
-from lanestyle import render_lane_debug, render_lane_map
+import lanestyle as ls
 
-DEBUG = "--debug" in sys.argv
-_pos = [a for a in sys.argv[1:] if not a.startswith("--")]
-DB = _pos[0] if len(_pos) > 0 else "../duckOSM/data/db/sodermalm_pbf_gmns.duckdb"
-OUT = _pos[1] if len(_pos) > 1 else ("lanes_debug.html" if DEBUG else "lanes.html")
-ROUTE = _pos[2] if len(_pos) > 2 else None
+p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+p.add_argument("gmns_db")
+p.add_argument("out")
+p.add_argument("--source-db")
+p.add_argument("--mode", default="driving")
+a = p.parse_args()
 
-from pathlib import Path
-
-(render_lane_debug if DEBUG else render_lane_map)(DB, OUT, route_geojson=ROUTE)
-out = Path(OUT)
-print(f"wrote {OUT}" + (" [debug]" if DEBUG else "") + (f" (with route {ROUTE})" if ROUTE else ""))
-print(f"serve it:  python {out.parent / 'serve.py'} 8080"
-      f"  ->  http://localhost:8080/{out.name}")
+lanes, turns = ls.from_gmns(a.gmns_db, mode=a.mode, source_db=a.source_db)
+ls.render_lanes(lanes, turns=turns).save(a.out)
+serve = ls.write_serve(a.out)
+print(f"wrote {a.out}: {len(lanes)} lanes, {len(turns)} turns")
+print(f"serve it:  python {serve} 8080")

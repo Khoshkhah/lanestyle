@@ -1,13 +1,13 @@
 # From OSM to a lane-level map — the full pipeline
 
 Every step to reproduce the lanestyle lane-level visualization, starting from raw OpenStreetMap and
-ending at the interactive WebGL map (with lane connectivity, street names, one-way arrows, a base-layer
-selector, and an optional lane route).
+ending at the interactive lane map drawn with roadstyle (exact lane widths, bridges and tunnels, lane
+connectivity, street names, one-way arrows, base maps, and an optional lane route).
 
 ```
    .osm.pbf                          duckOSM                              lanestyle
  ┌──────────┐   build   ┌────────────────────────┐   render   ┌──────────────────────────┐
- │ raw OSM  │ ────────► │ routable network        │ ────────► │ WebGL lane map           │
+ │ raw OSM  │ ────────► │ routable network        │ ────────► │ roadstyle lane map       │
  │ extract  │           │  → GMNS lanes+movements │           │  lanes · names · arrows  │
  └──────────┘           └────────────────────────┘           │  click → connectivity    │
                                                               └──────────────────────────┘
@@ -15,15 +15,16 @@ selector, and an optional lane route).
 ```
 
 Two sibling repos do the work: **[duckOSM](../../duckOSM)** turns OSM into a routable network and a
-GMNS db (with per-lane geometry); **lanestyle** (this repo) renders it. lanestyle is standalone — it
-only needs the GMNS db file.
+GMNS db (with per-lane geometry); **lanestyle** (this repo) renders it with
+roadstyle. It needs the GMNS db file, plus the duckOSM db it was made from for bridge / tunnel /
+layer levels.
 
 ---
 
 ## Prerequisites
 
 - **duckOSM** checked out and installed (its own env): `pip install -e .` in `../duckOSM`.
-- **lanestyle** installed (this repo): `pip install -e .` — deps `geopandas`, `duckdb`, `folium`.
+- **lanestyle** installed (this repo): `pip install -e .` — deps `roadstyle>=0.10`, `geopandas`, `duckdb`.
 - An OSM extract (`.osm.pbf`) for your area (e.g. from Geofabrik), or an existing duckOSM db.
 
 Paths below assume the standard workspace layout (`duckOSM/` and `lanestyle/` as siblings).
@@ -72,53 +73,54 @@ Skip this step if you just want the lane map without a route.
 
 ## Step 4 — Render the lane-level map (lanestyle)
 
-Render the GMNS db to an interactive **WebGL** map (deck.gl + maplibre). Use `--debug` for the full
-inspectable viewer (click-to-inspect, connectivity highlight, names, arrows, base selector).
+Read the GMNS db into a lane table and draw it with roadstyle. Pass the duckOSM db the GMNS file was
+made from as `--source-db`: it gives each lane its bridge / tunnel / layer (the GMNS `link` has no
+levels yet). It must be the *same* build: `link_id` = its `edge_id`.
 
 ```bash
 cd ../lanestyle
-python render_lanes.py ../duckOSM/data/db/tartu_gmns.duckdb tartu_lanes.html --debug
-# with a route:
-python render_lanes.py ../duckOSM/data/db/tartu_gmns.duckdb tartu_lanes.html route.geojson --debug
+python render_lanes.py ../duckOSM/data/db/tartu_gmns.duckdb tartu_lanes.html \
+    --source-db ../duckOSM/data/db/tartu.duckdb
 ```
 
-Or from Python:
+Or from Python (a route from step 3 goes in as a roadstyle overlay):
 
 ```python
-from lanestyle import render_lane_debug
-render_lane_debug("../duckOSM/data/db/tartu_gmns.duckdb", "tartu_lanes.html",
-                  route_geojson="route.geojson")     # WebGL by default; backend="folium" also works
+import geopandas as gpd, roadstyle as rs, lanestyle as ls
+lanes, turns = ls.from_gmns("../duckOSM/data/db/tartu_gmns.duckdb",
+                            source_db="../duckOSM/data/db/tartu.duckdb")
+route = gpd.read_file("route.geojson")
+ls.render_lanes(lanes, turns=turns, overlays=[rs.Overlay(route, label="route")]).save("tartu_lanes.html")
 ```
 
 ## Step 5 — View it
 
-Each render drops a `serve.py` next to the HTML (auto-picks a free port, redirects `/` to the map):
+`render_lanes.py` drops a `serve.py` next to the HTML (auto-picks a free port, redirects `/` to the
+map); from Python, `ls.write_serve("tartu_lanes.html")` does the same:
 
 ```bash
 python serve.py            #  ->  http://localhost:8080/   (open the printed URL)
 ```
 
-Working **remotely**? Either forward the exact printed port (VS Code Ports panel, or
-`ssh -L PORT:localhost:PORT <host>`), or just **download the HTML** and open it locally — it's
+Working **remotely**? Forward the printed port (VS Code Ports panel, or
+`ssh -L PORT:localhost:PORT <host>`), or download the HTML and open it locally: it is
 self-contained (only the base tiles come from the internet).
 
 ---
 
-## What you see (the debug viewer)
+## What you see
 
 | Element | What it is |
 |---|---|
-| **Lane surfaces** (grey / orange / blue) | each lane = a polygon of its width, coloured by use (auto / bus / bike) |
-| **Base-layer selector** | osm-carto / Carto light / Carto dark / satellite |
-| **Toggles** | per-use lanes · street names · one-way arrows · route |
-| **Hover a lane** | its `use` / lane # / `edge_id` / width |
-| **Click a lane** | it turns **red**; outgoing lanes (GMNS turns thru/left/right + lane-changes) turn **cyan**, and **U-turn** movements (GMNS `type='uturn'`) turn **purple** — distinct so a reversal isn't mistaken for a continuation; panel shows both counts |
-| **Street names / one-way arrows** | from the GMNS `link` table (one-way = a link with no reverse pair) |
-| **Route** (yellow) | the `route-lanes` path from step 3 |
+| **Lanes** | each lane one line, exactly its width in metres from zoom 16 on (the class width below), coloured by road class (`mono` palette) |
+| **Lane use** | bus / bike lanes painted over the palette (a *Colour by* entry; the legend lists only uses present) |
+| **Levels** | tunnels drawn under the street, bridges over it, in the order of the OSM `layer` tag (roadstyle) |
+| **Click a lane** | it turns **red** with its popup (lane id, number, turn, use, width, link id); the lanes its GMNS movements lead into turn **green**, **U-turns** **purple** |
+| **Base maps, filter box, names, arrows** | roadstyle's, unchanged |
 
 ## Fidelity — read this
 
-- Lane **geometry** is real (offset centerline buffered by width), but **width is a 3.25 m default**
+- Lane **geometry** is real (duckOSM's drive-side offset centre line), but **width is a 3.25 m default**
   wherever OSM lacks `width:lanes`, so lanes look uniform.
 - Lane **connectivity structure** is real (turns honour restrictions), but lane-to-lane **turn
   assignment** is permissive where `turn:lanes` is untagged (all inbound lanes → all outbound lanes).
@@ -127,6 +129,4 @@ self-contained (only the base tiles come from the internet).
 
 ## Scale
 
-The default WebGL backend renders a whole city in a compact page — **Tartu ~23k lanes → ~18 MB**,
-Södermalm ~3k → ~2.4 MB. The `folium` backend is crisp at neighbourhood scale but heavy for a whole
-city (Tartu ~60 MB there).
+Tartu's ~24k lanes make a 7.6 MB page, Södermalm's ~5k 2.3 MB, Monaco's ~3.5k 2.1 MB.
