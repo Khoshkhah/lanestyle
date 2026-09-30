@@ -76,3 +76,49 @@ def test_settings_override_the_roadstyle_way(tmp_path, monkeypatch):
 def test_write_serve_index_html_does_not_loop(tmp_path):
     src = ls.write_serve(tmp_path / "index.html").read_text()
     assert 'self.path != "/index.html"' in src
+
+
+def test_lane_lines_types(tmp_path):
+    """Link 1 (2 lanes) and link 3 are one two-way road: one divider, one centre line (drawn by the
+    smaller id, link 3), edges on the outside; link 2 is one-way: edges on both sides."""
+    from lanestyle.lines import lane_lines
+
+    gmns, src = _dbs(tmp_path)
+    lanes, _ = ls.from_gmns(gmns, source_db=src)
+    lanes["width_m"] = lanes["width_m"].fillna(3.25)
+    fc = lane_lines(lanes, ls.lane_settings())
+    kinds = [f["properties"]["t"] for f in fc["features"]]
+    assert sorted(kinds) == ["centre", "divider", "edge", "edge", "edge", "edge"]
+    assert {f["properties"]["b"] for f in fc["features"]} == {"ground", "bridge"}   # link 2 is a bridge
+
+
+def test_lane_lines_stop_short_of_a_junction():
+    """Three roads meet at node 0 (link 1 from the south, 2 north, 3 east): link 1's lines stop
+    junction_trim_m (1 m) short of the other roads' surface, so its east edge, which runs into
+    link 3 (3.25 m wide), is cut 1.625 + 1 m short, its west edge 1 m (link 2 starts at the node)."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from lanestyle.lines import lane_lines
+
+    d = 100 / 111_320                                        # 100 m of latitude
+    lanes = gpd.GeoDataFrame(
+        {"link_id": [1, 2, 3], "lane_num": [1, 1, 1], "width_m": [3.25] * 3,
+         "from_node_id": [1, 0, 0], "to_node_id": [0, 2, 3]},
+        geometry=[LineString([(18.0, 59.3 - d), (18.0, 59.3)]), LineString([(18.0, 59.3), (18.0, 59.3 + d)]),
+                  LineString([(18.0, 59.3), (18.002, 59.3)])], crs=4326)
+    fc = lane_lines(lanes, ls.lane_settings({"lanes": {"lines": {"edge": {"dash_m": None}}}}))
+    g = gpd.GeoDataFrame.from_features(fc["features"], crs=4326)
+    one = sorted(g.to_crs(lanes.estimate_utm_crs()).length[:2])   # link 1's two edge lines, 100 m
+    assert abs(one[0] - 97.375) < 0.3 and abs(one[1] - 99.0) < 0.3
+
+
+def test_lines_off_and_without_link_columns(tmp_path):
+    from lanestyle.lines import lane_lines
+
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    assert "lane-lines" in ls.render_lanes(lanes, turns=turns).html
+    assert "lane-lines" not in ls.render_lanes(lanes, settings={"lanes": {"lines": False}}).html
+    assert lane_lines(lanes.drop(columns=["lane_num"]).assign(width_m=3.25), ls.lane_settings()) is None
+    page = ls.render_lanes(lanes, turns=turns).html
+    assert "reverse_link_id" not in page.split("const style = ", 1)[1].split("</script>", 1)[0]

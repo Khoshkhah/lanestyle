@@ -9,6 +9,8 @@ Design: docs/design/lanestyle_on_roadstyle.md.
 import json
 from pathlib import Path
 
+from lanestyle.lines import lane_lines
+
 _POPUP = ["name", "lane_id", "lane_num", "turn", "use", "width_m", "link_id"]
 _MARKED = ("bus", "bike")          # uses painted over the palette; any other use keeps the road colour
 
@@ -31,6 +33,55 @@ _CLICK_JS = """<script>
 })();
 </script>
 """
+
+
+# the lane lines: one MapLibre line layer per band and type, right after that band's fill, so a
+# bridge covers the lines of the street under it; widths in metres (k = width_m / cos(lat)) from
+# width_m_zoom, dashes in multiples of the line width (dash_m / width_m), exact at every zoom
+_LINES_JS = """<script>
+(function(){
+  const D = __LINES__, S = __STYLES__, Z = __ZOOM__;     // compact columns (_compact), rebuilt here
+  const L = {type: "FeatureCollection", features: D.c.map((c, i) => ({type: "Feature",
+    properties: {t: D.types[D.t[i]], b: D.bands[D.b[i]], k: D.k[i]},
+    geometry: {type: Array.isArray(c[0][0]) ? "MultiLineString" : "LineString", coordinates: c}}))};
+  const AFTER = {tunnel: "roads-tunnel-fill", low: "roads-low-fill", ground: "roads-fill",
+                 high: "roads-high-fill", bridge: "roads-bridge-fill"};
+  const px = z => 512 * Math.pow(2, z) / 40075016.686;
+  function add(){
+    if (map.getSource("lane-lines")) return;
+    map.addSource("lane-lines", {type: "geojson", data: L});
+    const ids = map.getStyle().layers.map(l => l.id);
+    for (const b in AFTER) {
+      const i = ids.indexOf(AFTER[b]);
+      if (i < 0) continue;
+      for (const t in S) {
+        const s = S[t];
+        if (!s) continue;
+        const paint = {"line-color": s.color, "line-width": ["interpolate", ["exponential", 2], ["zoom"],
+                       Z, ["*", ["get", "k"], px(Z)], 22, ["*", ["get", "k"], px(22)]]};
+        if (s.dash_m) paint["line-dasharray"] = s.dash_m.map(d => d / s.width_m);
+        map.addLayer({id: "lane-lines-" + b + "-" + t, type: "line", source: "lane-lines", minzoom: Z,
+                      filter: ["all", ["==", ["get", "t"], t], ["==", ["get", "b"], b]],
+                      layout: {"line-cap": "butt", "line-join": "round"}, paint: paint}, ids[i + 1]);
+      }
+    }
+  }
+  if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
+_HELPERS = ["from_node_id", "to_node_id", "reverse_link_id"]      # for the lines only, not the page
+
+
+def _compact(fc):
+    """The lines as columns, not GeoJSON features: a city's ~35k lines are half wrapping otherwise."""
+    fs = fc["features"]
+    types = sorted({f["properties"]["t"] for f in fs})
+    bands = sorted({f["properties"]["b"] for f in fs})
+    return {"types": types, "bands": bands,
+            "t": [types.index(f["properties"]["t"]) for f in fs],
+            "b": [bands.index(f["properties"]["b"]) for f in fs],
+            "k": [f["properties"]["k"] for f in fs], "c": [f["geometry"]["coordinates"] for f in fs]}
 
 
 def _merge(a, b):
@@ -59,8 +110,10 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     ``width_m_zoom`` on (``default_width_m`` where null). Bus and bike lanes are painted over the
     palette (a "Lane use" colouring; the legend lists only uses present). ``turns`` (``from_lane``,
     ``to_lane``, optional ``type``) makes a lane clickable: it turns red and the lanes it leads into
-    green, U-turns purple. ``settings``: roadstyle settings, plus a ``"lanes"`` key for
-    lanestyle's own (``data/lanestyle.json``). Other keywords go to ``roadstyle.render_edges``."""
+    green, U-turns purple. Lane lines (dividers, centre and edge lines, styled per type under
+    ``lines``) come from ``link_id`` / ``lane_num`` (+ ``reverse_link_id``, node ids; see
+    :func:`lanestyle.lines.lane_lines`). ``settings``: roadstyle settings, plus a ``"lanes"`` key
+    for lanestyle's own (``data/lanestyle.json``). Other keywords go to ``roadstyle.render_edges``."""
     import roadstyle as rs
 
     s = lane_settings(settings)
@@ -72,23 +125,34 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     if present:
         opts = dict(color_options={"Road class": {}, "Lane use": {"color_by": "use", "colors": present}},
                     color_active="Lane use")
+    lines = lane_lines(g, s)
     m = rs.render_edges(
-        g, palette=palette, width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=s["casing_m"],
+        g.drop(columns=[c for c in _HELPERS if c in g.columns]), palette=palette,
+        width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=s["casing_m"],
         road_popup=[c for c in _POPUP if c in g.columns],
         **{"select_color": s["colors"]["clicked"], **kwargs},   # roadstyle's own selection glow
         settings={k: v for k, v in (settings or {}).items() if k != "lanes"} or None,
         **opts)
-    if turns is None or not len(turns):
+    js = ""
+    if lines:
+        js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
+               .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"])))
+    if turns is not None and len(turns):
+        js += _click_js(turns, s)
+    if not js:
         return m
+    html = m.html
+    i = html.rfind("</body>")
+    return type(m)(html[:i] + js + html[i:])
+
+
+def _click_js(turns, s):
     nxt = {}
     types = turns["type"] if "type" in turns else [None] * len(turns)
     for a, b, t in zip(turns["from_lane"].astype(str), turns["to_lane"].astype(str), types):
         nxt.setdefault(a, [[], []])[t == "uturn"].append(b)
-    js = (_CLICK_JS.replace("__TURNS__", json.dumps(nxt, separators=(",", ":")))
-          .replace("__COLORS__", json.dumps({k: s["colors"][k] for k in ("clicked", "turns_into", "uturn")})))
-    html = m.html
-    i = html.rfind("</body>")
-    return type(m)(html[:i] + js + html[i:])
+    return (_CLICK_JS.replace("__TURNS__", json.dumps(nxt, separators=(",", ":")))
+            .replace("__COLORS__", json.dumps({k: s["colors"][k] for k in ("clicked", "turns_into", "uturn")})))
 
 
 _SERVE_PY = '''#!/usr/bin/env python3

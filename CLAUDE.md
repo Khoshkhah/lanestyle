@@ -22,8 +22,14 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
   - It appends a click script (`_CLICK_JS`, using `rsQuery` / `rsGetProps` / `rsColor`) and returns
     roadstyle's `WebMap`. Extra keywords go straight to `render_edges`.
   - `write_serve` writes a `serve.py` next to a page.
+- `src/lanestyle/lines.py`: the lane lines (step 2b). `lane_lines(lanes, settings)` offsets each
+  lane's centre line by half its width. It returns dividers, centre lines (drawn once, by the smaller
+  of the link and its `reverse_link_id`) and edges, with roadstyle's band mirrored in `_band`. Lines
+  are cut at junctions by the other links' lane surfaces. `render.py` ships them as compact columns
+  (`_compact`), and `_LINES_JS` adds one MapLibre layer per band and type after that band's fill.
+  The lanes themselves have no casing (`casing_m` 0).
 - `src/lanestyle/data/lanestyle.json`: lanestyle's defaults (colours, `default_width_m`, `casing_m`,
-  `width_m_zoom`). `lane_settings()` merges them with a `lanestyle.json` in the current folder, then
+  `width_m_zoom`, `lines`, `junction_trim_m`). `lane_settings()` merges them with a `lanestyle.json` in the current folder, then
   with `settings["lanes"]`.
 
 ## Constraints (agreed with Kaveh)
@@ -64,5 +70,7 @@ lives in `data/` (gitignored): `monaco.duckdb` and `<area>_gmns.duckdb`, rebuilt
   into strings in the page.
 - In the page, roadstyle feature ids are indexes into its source, not `lane_id`s. The click script
   maps `lane_id` → id on the first click.
+- Lane order is right-hand traffic: lane 1 is leftmost, next to the centre line (duckOSM). Left-hand
+  areas would need that checked (`ponytail:` note in `lines.py`).
 - Without `select_color`, roadstyle's violet selection glow hides the red clicked lane. That's why
   `render_lanes` passes the `clicked` colour.

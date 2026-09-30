@@ -5,8 +5,9 @@ line on its own geometry, drawn **exactly its width in metres** from zoom 16 on.
 the rest: draw order from the OSM `layer` tag, bridges, tunnels, base maps, the filter box, popups,
 arrows and its `rs*` JavaScript API. lanestyle is to lanes what mapstyle is to the full base map.
 
-Click a lane: it turns **red**, the lanes it leads into **green**, U-turns **purple**. Bus and bike
-lanes are painted over the palette (the *Lane use* colouring).
+Lanes are separated by painted-style **lane lines** (dashed dividers, centre lines, solid edges),
+which stop at junctions. Click a lane: it turns **red**, the lanes it leads into **green**, U-turns
+**purple**. Bus and bike lanes are painted over the palette (the *Lane use* colouring).
 
 **New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the full pipeline, from a raw `.osm.pbf`
 through duckOSM to this map.
@@ -41,12 +42,26 @@ ls.render_lanes(lanes, turns=turns, palette="mono").save("lanes.html")
 
 roadstyle's own settings apply (`roadstyle.json`, or `settings=`). lanestyle's defaults are in
 [`src/lanestyle/data/lanestyle.json`](src/lanestyle/data/lanestyle.json): lane colours, click
-colours, `default_width_m`, `casing_m`, `width_m_zoom`. Override them the roadstyle way, stating
-only what changes: a `lanestyle.json` in the current folder, or a `"lanes"` key in `settings=`:
+colours, the lane lines, `junction_trim_m`, `default_width_m`, `casing_m`, `width_m_zoom`. Override
+them the roadstyle way, stating only what changes: a `lanestyle.json` in the current folder, or a
+`"lanes"` key in `settings=`:
 
 ```python
 ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d35400"}}})
 ```
+
+**Lane lines** are their own layer on top of the lanes, each type styled on its own
+(`dash_m: null` = solid; `"lines": false` turns them off):
+
+| Type | Where | Default |
+|---|---|---|
+| `divider` | between lanes of one direction | white, 0.12 m, dashed 3 m / 9 m |
+| `centre` | between the two directions of a two-way road | white, 0.12 m, dashed 3 m / 3 m |
+| `edge` | the road's outer edges | grey, 0.10 m, solid |
+
+They stop `junction_trim_m` (1 m) short of the other roads' surface at a junction, and need
+`link_id` / `lane_num` in the lane table (plus `reverse_link_id` and `from_node_id` / `to_node_id`,
+which `from_gmns` adds, for centre lines and junctions). Right-hand traffic only for now.
 
 ## Install / run
 

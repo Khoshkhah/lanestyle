@@ -15,7 +15,9 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
     ``lanes``: a GeoDataFrame, one row per lane (EPSG:4326, each line in the direction of travel)
     with ``lane_id``, ``highway`` (the link's ``facility_type``), ``width_m`` (``lane.width``; null
     where untagged, render_lanes fills the default), ``use``, ``name`` (lane 1 only: one label per
-    road), ``link_id``, ``lane_num``, ``turn`` and, when known, ``bridge`` / ``tunnel`` / ``layer``.
+    road), ``link_id``, ``lane_num``, ``turn``, ``from_node_id`` / ``to_node_id`` and
+    ``reverse_link_id`` (the link between the same nodes the other way; null on a one-way road),
+    for the lane lines, and, when known, ``bridge`` / ``tunnel`` / ``layer``.
 
     Levels come from the GMNS ``link`` if it has those columns, else from ``source_db`` (the
     duckOSM database the GMNS file was made from: ``link_id`` = ``<mode>.edges.edge_id``), else
@@ -48,7 +50,10 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
             f"SELECT l.lane_id::VARCHAR AS lane_id, k.facility_type AS highway, l.width AS width_m, "
             f"  COALESCE(l.allowed_uses, 'auto') AS use, "
             f"  CASE WHEN l.lane_num = 1 THEN k.name END AS name, "
-            f"  l.link_id, l.lane_num, l.turn{lvl}, ST_AsWKB(l.geom) AS geom "
+            f"  l.link_id, l.lane_num, l.turn, k.from_node_id, k.to_node_id, "
+            f"  (SELECT min(r.link_id) FROM {g}.link r WHERE r.from_node_id = k.to_node_id "
+            f"     AND r.to_node_id = k.from_node_id AND r.link_id <> k.link_id) AS reverse_link_id"
+            f"  {lvl}, ST_AsWKB(l.geom) AS geom "
             f"FROM {g}.lane l JOIN {g}.link k ON k.link_id = l.link_id {join} "
             f"WHERE l.geom IS NOT NULL ORDER BY l.link_id, l.lane_num").df()
         turns = pd.DataFrame({"from_lane": [], "to_lane": [], "type": []}, dtype=object)
@@ -63,6 +68,7 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
                 f"ORDER BY 1, 2").df()
     finally:
         con.close()
-    df["link_id"] = df["link_id"].astype("Int64")          # BIGINT hash ids: never float64
+    for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id"):
+        df[c] = df[c].astype("Int64")                       # BIGINT hash ids: never float64
     geom = gpd.GeoSeries.from_wkb(df.pop("geom").map(bytes), crs=4326)
     return gpd.GeoDataFrame(df, geometry=geom, crs=4326), turns

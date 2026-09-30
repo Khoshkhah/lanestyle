@@ -127,18 +127,94 @@ Without it, clicking a lane only selects it.
   (gitignored) with `duckosm gmns <db> -m driving -o data/<area>_gmns.duckdb`.
 - Test maps: `renders/lanes/` (`build.py`, `check.py`, served by its `serve.py`).
 
+## 2b. Lane lines as their own layer
+
+**Status:** approved by Kaveh 2026-09-30 and built the same day (`src/lanestyle/lines.py`).
+
+### Problem (Kaveh, 2026-09-30)
+
+Step 2 separates lanes with roadstyle's **casing**: each lane's 0.15 m dark edge, inside its width.
+That fails in two ways (Södermalm, Högalidsgatan / Varvsgatan, zoom 19.5):
+
+- **At intersections the lines vanish.** roadstyle draws every casing first, then every fill, so the
+  lanes of the crossing roads cover the dividers. Small white slivers also show where lane ends meet
+  at an angle.
+- **The line can't be styled.** It is the road casing: no colour, dash or width of its own.
+
+### Proposal
+
+The lanes get **no casing** (`casing_m = 0`): each lane is a plain surface, and neighbours merge into
+one road, as asphalt does. The lines are **lanestyle's own layer**, drawn on top of the lanes:
+
+| Type | Where | Default |
+|---|---|---|
+| `divider` | between lane k and k+1 of one link (same direction) | white, 0.12 m, dashed 3 m / 9 m |
+| `centre` | left edge of lane 1 on a two-way road (between the two directions); drawn once per road, by the link with the smaller id | white, 0.12 m, dashed 3 m / 3 m |
+| `edge` | the road's outer edges: the right edge of the last lane, and the left edge of lane 1 on a one-way road | grey, 0.10 m, solid |
+
+- **Geometry, in Python:** each line is the lane's centre line offset by half its width (shapely, in
+  metres), from the lane table's `link_id` and `lane_num`. `from_gmns` adds `reverse_link_id` (the
+  link with the same two nodes, swapped) so the engine knows which roads are two-way. A lane table
+  without `link_id` / `lane_num` gets no lines; the map still draws.
+- **Lines stop at intersections**, as painted lines do: a line ending at a node where 3 or more links
+  meet is cut back by `junction_trim_m` (default 5 m). Inside the junction the lanes are one surface.
+- **Styled in `lanestyle.json`**, each type on its own, the roadstyle way:
+
+    ```json
+    {"lanes": {"lines": {"divider": {"color": "#ffffff", "width_m": 0.12, "dash_m": [3, 9]},
+                         "centre":  {"color": "#ffffff", "width_m": 0.12, "dash_m": [3, 3]},
+                         "edge":    {"color": "#6b6b6b", "width_m": 0.10, "dash_m": null}},
+               "junction_trim_m": 5}}
+    ```
+
+  `dash_m: null` = solid. `"lines": false` turns them all off.
+- **Drawing:** lanestyle's page script adds a GeoJSON source and one MapLibre line layer per level:
+  tunnel lines after `roads-tunnel-fill`, ground after `roads-fill`, bridge after `roads-bridge-fill`.
+  So a bridge covers the lines of the street under it. The width is in metres, with the same formula
+  as roadstyle's metre widths, and the lines are hidden below `width_m_zoom`. `line-dasharray` counts
+  in multiples of the line's width, so `dash_m` is divided by `width_m`. Dashes are then exact at every
+  zoom.
+- **The slivers and the hairline:** a divider or centre line sits on every seam between two lanes, so
+  the hairline is covered. The slivers inside junctions, where round lane ends meet at an angle, may
+  remain. If they do, a later option could fill each junction with one polygon in the road's colour.
+
+### Built: what changed from the proposal
+
+- **Lines stop at the crossing road's surface, not a fixed 5 m.** 5 m was too short at wide junctions
+  (Högalidsgatan / Varvsgatan: edge lines ran across Varvsgatan). A line whose link meets a junction
+  is cut by the lane surfaces of every other link there (not its own or its reverse), grown by
+  `junction_trim_m`, now 1 m. So a main road's dividers run on past a side street's mouth and its edge
+  line breaks there, as painted roads do.
+- **Page size:** lines are offset with mitre joins and simplified by 5 cm (round joins doubled the
+  points), and sent as compact columns, not GeoJSON features, rebuilt in the page. Tartu: 10.9 MB
+  (7.6 MB without lines; 17.7 MB as plain GeoJSON).
+- The white slivers inside junctions are gone with the casing, so no junction polygon is needed.
+- A lane highlighted by a click (red / green / purple) covers its own lines: roadstyle's highlight
+  draws above them.
+
+### Not in this step
+
+- Solid lines before a junction, or next to a bus lane (Swedish "bussfält"). OSM rarely tags
+  `change:lanes`, and duckOSM doesn't export it.
+- Turn arrows painted on the lanes (from `turn`).
+
+### Checks
+
+- Tests:
+  - line types and counts on the small test db: a divider between lanes 1 and 2, one centre line per
+    two-way road, edge lines;
+  - trimming at a junction node;
+  - settings override one type;
+  - no lines without `link_id` / `lane_num`.
+- In the browser, at the same Högalidsgatan junction and a Monaco tunnel: screenshots on the
+  previews page (port 8090).
+
 ## Steps
 
 1. roadstyle: short design note in its `docs/design/`, code and tests on a branch.
 2. lanestyle: rebuilt on that branch of roadstyle, with tests; test maps (Monaco, Södermalm, Tartu)
    for Kaveh to try locally.
-2b. Lane markings (after step 2 works, its own short section here first): painted lines instead of
-   the dark divider. Dashed between lanes of one direction, a centre line between the two
-   directions (lane 1 and its reverse link's lane 1), a solid edge line. A MapLibre line layer added
-   by lanestyle's page script, width in metres by the same formula; `line-dasharray` counts in line
-   widths, so `[20, 60]` on 0.15 m = 3 m dash, 9 m gap, right at every zoom. `casing_m=0` so the
-   gaps show the road. Hard part: one marking layer per level (tunnel / ground / bridge). OSM rarely
-   tags `change:lanes` and duckOSM doesn't export it, so every line between lanes is dashed.
+2b. Lane lines as their own layer: see the section "2b." above. Built 2026-09-30.
 3. After Kaveh's OK: roadstyle PR and release 0.10.0; lanestyle made public on GitHub.
 4. Later, a separate decision: duckOSM's `gmns-map --style lane` calls lanestyle.
 
