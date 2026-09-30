@@ -35,8 +35,9 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
 - Before lanestyle goes public on GitHub, the Gmail address must be removed from the commit history.
   Ask whether to start a fresh history or rewrite the existing commits.
 - Non-trivial features: write a design note in `docs/design/` and get Kaveh's OK before coding.
-- Previews go in `renders/<topic>/` (gitignored), with an `index.html` and a running `serve.py`.
-  Give Kaveh the `http://localhost:<port>/` URL, and let him see things before anything is pushed.
+- Previews go in `renders/<topic>/` (gitignored), linked from `renders/index.html`, and served by
+  one server, `renders/serve.py` on port 8090 (Kaveh's browser reached 8090 but not 8091). Give him
+  `http://localhost:8090/`, and let him see things before anything is pushed.
 
 ## Commands
 
