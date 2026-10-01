@@ -79,8 +79,7 @@ which `from_gmns` adds, for centre lines and junctions). Right-hand traffic only
 
 ## Install / run
 
-Needs roadstyle 0.10 (metre widths; until it is released, the `metre-width` branch of roadstyle),
-plus geopandas and duckdb.
+Needs roadstyle 0.11 or newer (line widths in metres), geopandas and duckdb.
 
 ```bash
 pip install -e .

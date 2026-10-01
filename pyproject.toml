@@ -8,7 +8,7 @@ version = "0.4.0"
 description = "Lane-level maps on roadstyle, from a lane table or a duckOSM GMNS db"
 authors = [{ name = "Kaveh" }]
 requires-python = ">=3.10"
-dependencies = ["roadstyle>=0.10", "geopandas", "shapely", "duckdb"]
+dependencies = ["roadstyle>=0.11", "geopandas", "shapely", "duckdb"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

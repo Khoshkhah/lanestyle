@@ -36,8 +36,8 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
 ## Constraints (agreed with Kaveh)
 
 - **roadstyle changes only once:** the metre-width option (`width_m_col`, `width_m_zoom`, `casing_m`),
-  for release 0.10.0. Until then it lives on roadstyle branch `metre-width`, in the worktree
-  `../roadstyle-metre-width`. Lane logic stays in lanestyle; ask before any other roadstyle change.
+  released as roadstyle 0.11.0 (PR #20). Lane logic stays in lanestyle; ask before any other
+  roadstyle change.
 - Don't change duckOSM (its `gmns-map` stays) until lanestyle is built and tested. One exception
   (Kaveh, 2026-09-30): duckOSM branch `paired-carriageways` places a road mapped as two one-way ways
   as one road (`docs/design/gmns_paired_carriageways.md` there). Lane-overlap reports are about our
@@ -52,8 +52,9 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
 
 ## Commands
 
-roadstyle 0.10 isn't released yet, and the `roadstyle` conda env's editable install points at the
-`main` checkout. So put the branch worktree on the path:
+roadstyle 0.11.0 (released 2026-09-30) has the metre widths. The `roadstyle` conda env's editable
+install points at the `main` checkout (`../roadstyle`), which may be ahead of the release; the
+worktree `../roadstyle-metre-width` is at the release. Put one of them on the path:
 
 ```bash
 PY="env PYTHONPATH=src:../roadstyle-metre-width/src $HOME/miniconda3/envs/roadstyle/bin/python"
