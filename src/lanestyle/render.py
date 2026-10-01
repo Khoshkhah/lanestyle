@@ -42,7 +42,10 @@ _CLICK_JS = """<script>
 # width_m_zoom, dashes in multiples of the line width (dash_m / width_m), exact at every zoom
 _LINES_JS = """<script>
 (function(){
-  const D = __LINES__, S = __STYLES__, Z = __ZOOM__;     // compact columns (_compact), rebuilt here
+  const D = __LINES__, S = __STYLES__, Z = __ZOOM__;
+  // never thinner than one physical pixel of this screen (a sub-pixel line vanishes in some browsers
+  // and at browser zooms under 100 %), true to scale above that; faded in over two zoom levels
+  const MIN = __MIN_DEVICE_PX__ / (window.devicePixelRatio || 1);     // compact columns (_compact), rebuilt here
   const L = {type: "FeatureCollection", features: D.c.map((c, i) => ({type: "Feature",
     properties: {t: D.types[D.t[i]], b: D.bands[D.b[i]], k: D.k[i]},
     geometry: {type: Array.isArray(c[0][0]) ? "MultiLineString" : "LineString", coordinates: c}}))};
@@ -63,8 +66,10 @@ _LINES_JS = """<script>
       for (const t in S) {
         const s = S[t];
         if (!s) continue;
-        const paint = {"line-color": s.color, "line-width": ["interpolate", ["exponential", 2], ["zoom"],
-                       Z, ["*", ["get", "k"], px(Z)], 22, ["*", ["get", "k"], px(22)]]};
+        const w = ["interpolate", ["exponential", 2], ["zoom"]];
+        for (let z = Z; z <= 22; z++) w.push(z, ["max", ["*", ["get", "k"], px(z)], MIN]);
+        const paint = {"line-color": s.color, "line-width": w,
+                       "line-opacity": ["interpolate", ["linear"], ["zoom"], Z, 0.35, Z + 2, 1]};
         if (s.dash_m) paint["line-dasharray"] = s.dash_m.map(d => d / s.width_m);
         map.addLayer({id: "lane-lines-" + b + "-" + t, type: "line", source: "lane-lines", minzoom: Z,
                       filter: ["all", ["==", ["get", "t"], t], ["==", ["get", "b"], b]],
@@ -279,7 +284,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         js += _USE_ROWS_JS.replace("__ROWS__", json.dumps([[f"{u} lanes", c] for u, c in present.items()]))
     if lines:
         js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
-               .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"])))
+               .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"]))
+               .replace("__MIN_DEVICE_PX__", json.dumps(s.get("line_min_device_px", 1))))
     if conn is not None and conn.any():
         js += _FLAT_ENDS_JS
     if turns is not None and len(turns):
