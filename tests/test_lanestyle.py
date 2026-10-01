@@ -76,7 +76,7 @@ def test_settings_override_the_roadstyle_way(tmp_path, monkeypatch):
 
 def test_write_serve_index_html_does_not_loop(tmp_path):
     src = ls.write_serve(tmp_path / "index.html").read_text()
-    assert 'self.path != "/index.html"' in src
+    assert 'self.path != "/index.html"' in src and '"Cache-Control", "no-store"' in src
 
 
 def test_lane_lines_types(tmp_path):

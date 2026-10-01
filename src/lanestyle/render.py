@@ -322,6 +322,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")   # a rebuilt map shows on a plain reload
         super().end_headers()
 
 
