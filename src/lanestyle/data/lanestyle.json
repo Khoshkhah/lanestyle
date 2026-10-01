@@ -8,12 +8,12 @@
       "uturn": "#8e44ad"
     },
     "lines": {
-      "divider": {"color": "#ffffff", "width_m": 0.12, "dash_m": [3, 9]},
-      "centre": {"color": "#ffffff", "width_m": 0.12, "dash_m": null},
+      "divider": {"color": "#e8e8e8", "width_m": 0.15, "dash_m": [3, 9]},
+      "centre": {"color": "#e8e8e8", "width_m": 0.15, "dash_m": null},
       "edge": {"color": "#6b6b6b", "width_m": 0.10, "dash_m": null}
     },
     "junction_trim_m": 1,
-    "line_min_device_px": 1,
+    "line_min_device_px": 1.5,
     "type_label_zoom": 18,
     "default_width_m": 3.25,
     "casing_m": 0,

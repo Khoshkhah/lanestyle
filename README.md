@@ -67,11 +67,11 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d354
 
 | Type | Where | Default |
 |---|---|---|
-| `divider` | between lanes of one direction | white, 0.12 m, dashed 3 m / 9 m |
-| `centre` | between the two directions of a two-way road (also one mapped as two one-way ways) | white, 0.12 m, solid |
+| `divider` | between lanes of one direction | off-white `#e8e8e8`, 0.15 m, dashed 3 m / 9 m |
+| `centre` | between the two directions of a two-way road (also one mapped as two one-way ways) | off-white `#e8e8e8`, 0.15 m, solid |
 | `edge` | the road's outer edges | grey, 0.10 m, solid |
 
-They are drawn to scale but never thinner than `line_min_device_px` (1) physical pixel of the screen,
+They are drawn to scale but never thinner than `line_min_device_px` (1.5) physical pixels of the screen,
 fading in over two zoom levels from `width_m_zoom`. They stop `junction_trim_m` (1 m) short of the
 other roads' surface at a junction, and need
 `link_id` / `lane_num` in the lane table (plus `reverse_link_id` and `from_node_id` / `to_node_id`,
