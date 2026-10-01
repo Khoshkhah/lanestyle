@@ -1,0 +1,21 @@
+{
+  "lanes": {
+    "colors": {
+      "bus": "#9db8d9",
+      "bike": "#3f8fc9",
+      "clicked": "#e0453a",
+      "turns_into": "#149a86",
+      "uturn": "#8e44ad"
+    },
+    "lines": {
+      "divider": {"color": "#ffffff", "width_m": 0.12, "dash_m": [3, 9]},
+      "centre": {"color": "#ffffff", "width_m": 0.12, "dash_m": null},
+      "edge": {"color": "#6b6b6b", "width_m": 0.10, "dash_m": null}
+    },
+    "junction_trim_m": 1,
+    "type_label_zoom": 18,
+    "default_width_m": 3.25,
+    "casing_m": 0,
+    "width_m_zoom": 16
+  }
+}
