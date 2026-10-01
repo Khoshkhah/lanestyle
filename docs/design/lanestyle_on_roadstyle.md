@@ -220,6 +220,5 @@ one road, as asphalt does. The lines are **lanestyle's own layer**, drawn on top
 
 ## Open
 
-- **lanestyle's history before going public.** Its 14 commits carry the Gmail address in the author
-  line. Recommended: a fresh history (one first commit), since almost all the code is replaced. The
-  alternative: rewrite the 14 commits to name only (as was done for duckOSM).
+- ~~lanestyle's history before going public~~ Done 2026-09-30: the commits were rewritten to the
+  GitHub noreply address (as duckOSM's were) and the repo made public.

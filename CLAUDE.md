@@ -43,8 +43,8 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
   as one road (`docs/design/gmns_paired_carriageways.md` there). Lane-overlap reports are about our
   placement, not OSM data.
 - Work on **Monaco only** (Kaveh, 2026-09-30): build, check and count there; no other areas.
-- Before lanestyle goes public on GitHub, the Gmail address must be removed from the commit history.
-  Ask whether to start a fresh history or rewrite the existing commits.
+- The repo is public (since 2026-09-30); commits use the GitHub noreply address (repo-local
+  `user.email`), never the personal Gmail.
 - Non-trivial features: write a design note in `docs/design/` and get Kaveh's OK before coding.
 - Previews go in `renders/<topic>/` (gitignored), linked from `renders/index.html`, and served by
   one server, `renders/serve.py` on port 8090 (Kaveh's browser reached 8090 but not 8091). Give him
