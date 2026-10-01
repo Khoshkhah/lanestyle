@@ -210,3 +210,25 @@ def test_lane_type_labels(tmp_path):
     assert t == {"1_1": "U-turn + thru", "1_2": "bus · thru", "2_1": "end", "3_1": "end"}
     assert '"lane-type-labels"' in html
     assert "lane-type-labels" not in ls.render_lanes(lanes, turns=turns, settings={"lanes": {"type_label_zoom": None}}).html
+
+
+def test_lane_connectors_drawn_and_coloured(tmp_path):
+    """duckOSM's lane_connector rows become drawn connectors: the leaving lane's road class, no arrows,
+    no type label, and coloured with the lane they lead into when a lane is clicked."""
+    gmns, src = _dbs(tmp_path)
+    con = duckdb.connect(str(gmns))
+    con.execute("LOAD spatial; CREATE TABLE gmns_driving.lane_connector(connector_id VARCHAR, mvmt_id VARCHAR, "
+                "from_lane_id VARCHAR, to_lane_id VARCHAR, width DOUBLE, geom GEOMETRY)")
+    con.execute("INSERT INTO gmns_driving.lane_connector VALUES ('1_1>2_1', 'm', '1_1', '2_1', 3.25, "
+                "ST_GeomFromText('LINESTRING(18.01 59.30, 18.011 59.305, 18.00 59.31)'))")
+    con.close()
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    c = lanes.set_index("lane_id").loc["1_1>2_1"]
+    assert bool(c["connector"]) and c["highway"] == "secondary" and c["from_lane"] == "1_1"
+    html = ls.render_lanes(lanes, turns=turns).html
+    feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
+    p = {f["properties"]["lane_id"]: f["properties"] for f in feats}
+    assert p["1_1>2_1"]["oneway"] is False and p["1_1"]["oneway"] is True and p["1_1>2_1"].get("lane_type") is None
+    t = json.loads(html.split("const T = ", 1)[1].split(", C = ", 1)[0])
+    assert "1_1>2_1" in t["1_1"][0]
+    assert '"line-cap", "butt"' in html                         # lanes end flat once connectors join them

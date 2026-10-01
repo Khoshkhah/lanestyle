@@ -25,6 +25,9 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
     duckOSM database the GMNS file was made from: ``link_id`` = ``<mode>.edges.edge_id``), else
     every lane is at ground level (no level columns).
 
+    With duckOSM's ``lane_connector`` table, each lane-to-lane connector is a row too
+    (``connector`` True, ``from_lane`` / ``to_lane``; its level and road class from the lane it leaves).
+
     ``turns``: a DataFrame ``from_lane``, ``to_lane``, ``type`` (the movement type; ``uturn`` is
     drawn in its own colour), from ``movement``: each lane of the inbound link in
     ``start_ib_lane``..``end_ib_lane`` into the outbound lane at the same place in
@@ -66,6 +69,11 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
             f"  {lvl}, ST_AsWKB(l.geom) AS geom "
             f"FROM {g}.lane l JOIN {g}.link k ON k.link_id = l.link_id {join} "
             f"WHERE l.geom IS NOT NULL ORDER BY l.link_id, l.lane_num").df()
+        conn = None                    # duckOSM's lane connectors (docs/design/gmns_lane_connectors.md)
+        if _cols(con, g, "lane_connector"):
+            conn = con.execute(f"SELECT connector_id::VARCHAR AS lane_id, from_lane_id::VARCHAR AS from_lane, "
+                               f"to_lane_id::VARCHAR AS to_lane, width AS width_m, ST_AsWKB(geom) AS geom "
+                               f"FROM {g}.lane_connector WHERE geom IS NOT NULL").df()
         turns = pd.DataFrame({"from_lane": [], "to_lane": [], "type": []}, dtype=object)
         if _cols(con, g, "movement"):
             turns = con.execute(
@@ -82,5 +90,14 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
         con.close()
     for c in [c for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id", "osm_id") if c in df]:
         df[c] = df[c].astype("Int64")                       # BIGINT hash ids: never float64
+    df["connector"] = False
+    if conn is not None and len(conn):           # a connector looks like the lane it leaves
+        lane_cols = [c for c in df.columns if c not in ("lane_id", "width_m", "name", "lane_num", "turn", "geom",
+                                                         "connector")]
+        conn = conn.merge(df[["lane_id"] + lane_cols].rename(columns={"lane_id": "from_lane"}), on="from_lane", how="left")
+        conn["connector"] = True
+        df = pd.concat([df, conn], ignore_index=True)
+    for c in [c for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id", "osm_id") if c in df]:
+        df[c] = df[c].astype("Int64")
     geom = gpd.GeoSeries.from_wkb(df.pop("geom").map(bytes), crs=4326)
     return gpd.GeoDataFrame(df, geometry=geom, crs=4326), turns

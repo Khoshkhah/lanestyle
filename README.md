@@ -9,6 +9,11 @@ Lanes are separated by painted-style **lane lines** (dashed dividers, centre lin
 which stop at junctions. Click a lane: it turns **red**, the lanes it leads into **green**, U-turns
 **purple**. Bus and bike lanes are painted over the palette (the *Lane use* colouring).
 
+With duckOSM's `lane_connector` table (a curve per lane pair through a junction or where a lane
+shifts sideways), `from_gmns` returns the connectors as rows too (`connector` True): they're drawn
+like lanes, without arrows, lane lines or labels, a click colours them with the lanes they lead into,
+and lanes then end flat.
+
 **New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the full pipeline, from a raw `.osm.pbf`
 through duckOSM to this map.
 

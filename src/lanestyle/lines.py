@@ -95,6 +95,8 @@ def lane_lines(lanes, s):
     styles = s.get("lines") or {}
     if not any(styles.values()) or not {"link_id", "lane_num"} <= set(lanes.columns):
         return None
+    if "connector" in lanes:                     # connectors carry no lane lines
+        lanes = lanes[~lanes["connector"].fillna(False).astype(bool)]
     g = lanes.to_crs(lanes.estimate_utm_crs())
     lat = lanes.geometry.representative_point().y.to_numpy()
     last = g.groupby("link_id")["lane_num"].transform("max").to_numpy()

@@ -12,7 +12,7 @@ from pathlib import Path
 from lanestyle.lines import lane_lines
 
 _POPUP = ["name", "lane_type", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
-          "layer", "turns_in", "turns_out", "link_id", "reverse_link_id", "osm_id", "from_node_id",
+          "layer", "turns_in", "turns_out", "from_lane", "to_lane", "link_id", "reverse_link_id", "osm_id", "from_node_id",
           "to_node_id"]                       # the ones present and not null show
 _MARKED = ("bus", "bike")          # uses painted over the palette; any other use keeps the road colour
 
@@ -134,6 +134,21 @@ _LABELS_JS = """<script>
 """
 
 
+# with lane connectors the lanes join up, so they end flat: a round end bulges past a lane's end and,
+# in a (translucent) tunnel, overlapping round ends show as discs
+_FLAT_ENDS_JS = """<script>
+(function(){
+  function flat(){
+    for (const l of map.getStyle().layers)
+      if (l.type === "line" && l.source === "roads" && map.getLayoutProperty(l.id, "line-cap") === "round")
+        map.setLayoutProperty(l.id, "line-cap", "butt");
+  }
+  if (map.isStyleLoaded()) flat(); else map.once("load", flat);
+})();
+</script>
+"""
+
+
 def _lane_types(g, turns):
     """Each lane's type label: the turns that leave it (``left + thru``, ``U-turn``, ``fork``, ``merge``)
     or ``end`` where none does; a bus or bike lane says so first (``bus · thru``)."""
@@ -190,8 +205,13 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     if present:
         opts = dict(color_options={"Road class": {}, "Lane use": {"color_by": "use", "colors": present}},
                     color_active="Lane use")
+    conn = g["connector"].fillna(False).astype(bool) if "connector" in g else None
+    if conn is not None:                                 # arrows on lanes, not on connectors
+        g["oneway"] = ~conn
     if turns is not None and len(turns):                 # what each lane is for (label + popup)
         g["lane_type"] = _lane_types(g, turns)
+        if conn is not None:
+            g.loc[conn, "lane_type"] = None
     if turns is not None and len(turns):                 # how many lanes lead in / out, for the popup
         g["turns_in"] = g["lane_id"].map(turns.groupby(turns["to_lane"].astype(str)).size()).fillna(0).astype(int)
         g["turns_out"] = g["lane_id"].map(turns.groupby(turns["from_lane"].astype(str)).size()).fillna(0).astype(int)
@@ -207,8 +227,13 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     if lines:
         js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
                .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"])))
+    if conn is not None and conn.any():
+        js += _FLAT_ENDS_JS
     if turns is not None and len(turns):
-        js += _click_js(turns, s)
+        via = {}                                         # (from lane, to lane) -> its connector
+        if conn is not None and conn.any():
+            via = dict(zip(zip(g.loc[conn, "from_lane"], g.loc[conn, "to_lane"]), g.loc[conn, "lane_id"]))
+        js += _click_js(turns, s, via)
         if s.get("type_label_zoom") is not None:
             js += _LABELS_JS.replace("__ZOOM__", json.dumps(s["type_label_zoom"]))
     if not js:
@@ -218,11 +243,13 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     return type(m)(html[:i] + js + html[i:])
 
 
-def _click_js(turns, s):
-    nxt = {}
+def _click_js(turns, s, via=None):
+    nxt, via = {}, via or {}
     types = turns["type"] if "type" in turns else [None] * len(turns)
     for a, b, t in zip(turns["from_lane"].astype(str), turns["to_lane"].astype(str), types):
         nxt.setdefault(a, [[], []])[t == "uturn"].append(b)
+        if (a, b) in via:                                # and the connector into it
+            nxt[a][t == "uturn"].append(via[a, b])
     return (_CLICK_JS.replace("__TURNS__", json.dumps(nxt, separators=(",", ":")))
             .replace("__COLORS__", json.dumps({k: s["colors"][k] for k in ("clicked", "turns_into", "uturn")})))
 
