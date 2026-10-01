@@ -28,12 +28,12 @@ numbers grow to the right (duckOSM's convention).
 it was made from:
 
 ```python
-lanes, turns = ls.from_gmns("monaco_gmns.duckdb", mode="driving", source_db="monaco.duckdb")
+lanes, turns = ls.from_gmns("monaco_gmns.duckdb", mode="driving")
 ```
 
 It reads `gmns_<mode>.lane`, `.link`, `.movement` and, when present, `.lane_connector`. Levels come
-from the GMNS `link` if it has `bridge` / `tunnel` / `layer` columns, else from `source_db`
-(`link_id` = `<mode>.edges.edge_id`), else every lane is at ground level.
+from the GMNS `link` if it has `bridge` / `tunnel` / `layer` columns, else (GMNS files made
+before duckOSM wrote them) from `source_db`, the duckOSM database (`link_id` = `<mode>.edges.edge_id`), else every lane is at ground level.
 
 !!! warning "Keep the ids exact"
     duckOSM's `link_id` is a 64-bit content hash. Keep it an integer column (`Int64`), never float:

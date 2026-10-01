@@ -57,6 +57,20 @@ def test_from_gmns_lane_table_and_turns(tmp_path):
     assert "bridge" not in ls.from_gmns(gmns)[0].columns
 
 
+def test_from_gmns_levels_from_link_columns_need_no_source_db(tmp_path):
+    """duckOSM writes bridge / tunnel / layer into `link`: one file is enough."""
+    gmns, _ = _dbs(tmp_path)
+    con = duckdb.connect(str(gmns))
+    con.execute("ALTER TABLE gmns_driving.link ADD COLUMN bridge VARCHAR; "
+                "ALTER TABLE gmns_driving.link ADD COLUMN tunnel VARCHAR; "
+                "ALTER TABLE gmns_driving.link ADD COLUMN layer VARCHAR; "
+                "UPDATE gmns_driving.link SET bridge = 'yes', layer = '1' WHERE link_id = 2")
+    con.close()
+    r = ls.from_gmns(gmns)[0].set_index("lane_id")
+    assert r.loc["2_1", "bridge"] == "yes" and r.loc["2_1", "layer"] == "1"
+    assert pd.isna(r.loc["1_1", "bridge"])
+
+
 def test_render_lanes_metre_widths_uses_and_click(tmp_path):
     gmns, src = _dbs(tmp_path)
     lanes, turns = ls.from_gmns(gmns, source_db=src)

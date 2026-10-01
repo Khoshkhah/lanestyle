@@ -54,7 +54,7 @@ duckosm gmns monaco.duckdb -m driving -o monaco_gmns.duckdb
 ```
 
 ```python
-lanes, turns = ls.from_gmns("monaco_gmns.duckdb", source_db="monaco.duckdb")
+lanes, turns = ls.from_gmns("monaco_gmns.duckdb")
 ls.render_lanes(lanes, turns=turns).save("monaco.html")
 ```
 

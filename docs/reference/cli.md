@@ -10,12 +10,12 @@ python render_lanes.py GMNS_DB OUT.html [--source-db DB] [--mode driving] [--bou
 |---|---|
 | `GMNS_DB` | a duckOSM GMNS database (`duckosm gmns`) |
 | `OUT.html` | the map; a `serve.py` is written next to it |
-| `--source-db` | the duckOSM database the GMNS file was made from: bridges, tunnels and layers, and the area's boundary when it has one |
+| `--source-db` | optional: the duckOSM database the GMNS file was made from, for the area's boundary when it has one, `osm_id`, and the levels of GMNS files made before duckOSM wrote them |
 | `--mode` | the GMNS schema to read, `gmns_<mode>` (default `driving`) |
 | `--boundary` | a GeoJSON file to outline the area with instead |
 
 ```bash
-python render_lanes.py monaco_gmns.duckdb monaco.html --source-db monaco.duckdb
+python render_lanes.py monaco_gmns.duckdb monaco.html
 # wrote monaco.html: 5308 lanes, 4359 turns
 # serve it:  python serve.py 8080
 ```

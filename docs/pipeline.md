@@ -73,22 +73,20 @@ Skip this step if you just want the lane map without a route.
 
 ## Step 4 — Render the lane-level map (lanestyle)
 
-Read the GMNS db into a lane table and draw it with roadstyle. Pass the duckOSM db the GMNS file was
-made from as `--source-db`: it gives each lane its bridge / tunnel / layer (the GMNS `link` has no
-levels yet). It must be the *same* build: `link_id` = its `edge_id`.
+Read the GMNS db into a lane table and draw it with roadstyle. The GMNS `link` carries each road's
+bridge / tunnel / layer. `--source-db` (the duckOSM db the GMNS file was made from, the *same* build)
+is only for the area outline, or for GMNS files made before duckOSM wrote the levels.
 
 ```bash
 cd ../lanestyle
-python render_lanes.py ../duckOSM/data/db/tartu_gmns.duckdb tartu_lanes.html \
-    --source-db ../duckOSM/data/db/tartu.duckdb
+python render_lanes.py ../duckOSM/data/db/tartu_gmns.duckdb tartu_lanes.html
 ```
 
 Or from Python (a route from step 3 goes in as a roadstyle overlay):
 
 ```python
 import geopandas as gpd, roadstyle as rs, lanestyle as ls
-lanes, turns = ls.from_gmns("../duckOSM/data/db/tartu_gmns.duckdb",
-                            source_db="../duckOSM/data/db/tartu.duckdb")
+lanes, turns = ls.from_gmns("../duckOSM/data/db/tartu_gmns.duckdb")
 route = gpd.read_file("route.geojson")
 ls.render_lanes(lanes, turns=turns, overlays=[rs.Overlay(route, label="route")]).save("tartu_lanes.html")
 ```

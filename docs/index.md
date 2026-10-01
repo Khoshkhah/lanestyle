@@ -13,7 +13,7 @@ pip install lanestyle
 ```python
 import lanestyle as ls
 
-lanes, turns = ls.from_gmns("monaco_gmns.duckdb", source_db="monaco.duckdb")   # the reader
+lanes, turns = ls.from_gmns("monaco_gmns.duckdb")   # the reader
 ls.render_lanes(lanes, turns=turns).save("lanes.html")                          # the engine
 ```
 

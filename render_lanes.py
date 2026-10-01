@@ -6,8 +6,9 @@ Usage:
 
   GMNS_DB      a duckOSM GMNS db (built with `duckosm gmns`).
   OUT.html     the map; a serve.py is written next to it.
-  --source-db  the duckOSM db the GMNS db was made from: bridges, tunnels and layers for the lanes,
-               and the area's boundary (dashed outline) when it was built with one.
+  --source-db  optional, the duckOSM db the GMNS db was made from: the area's boundary (dashed
+               outline) when it was built with one, `osm_id`, and the levels of GMNS files made
+               before duckOSM wrote bridge / tunnel / layer into `link`.
   --boundary   a GeoJSON file to outline instead.
 """
 import argparse

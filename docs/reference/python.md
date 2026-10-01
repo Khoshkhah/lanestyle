@@ -39,7 +39,8 @@ GMNS database into `(lanes, turns)`.
 - `highway` is the link's `facility_type`, `width_m` the lane's `width` (null where untagged;
   `render_lanes` fills the default), `use` from `allowed_uses`, `name` on lane 1 only.
 - Levels (`bridge` / `tunnel` / `layer`) and `osm_id`: from the GMNS `link` if it has those
-  columns, else from `source_db`, the duckOSM database the GMNS file was made from.
+  columns (duckOSM writes them), else from `source_db`, the duckOSM database the GMNS file was made
+  from (older GMNS files). `osm_id` is only available from `source_db`.
 - `reverse_link_id`: the link with the same two nodes swapped **and** the same geometry, so the
   two halves of a one-way loop are not a pair.
 - `turns`: each inbound lane in the movement's range into the outbound lane at the same place in

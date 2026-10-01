@@ -22,9 +22,10 @@ Check: `python -c "import lanestyle, roadstyle; print(roadstyle.__version__)"`.
 - **A duckOSM GMNS database** (the normal path). From a `.osm.pbf`:
   `duckosm build --pbf area.osm.pbf -o area.duckdb -m driving`, then
   `duckosm gmns area.duckdb -m driving -o area_gmns.duckdb`. Then
-  `lanes, turns = ls.from_gmns("area_gmns.duckdb", source_db="area.duckdb")`. `source_db` is the
-  duckOSM database the GMNS file was made from (same build: `link_id` = its `edge_id`); it gives
-  the lanes their bridge / tunnel / `layer`, and `ls.read_boundary(source_db)` the area outline.
+  `lanes, turns = ls.from_gmns("area_gmns.duckdb")`: one file; the links carry bridge / tunnel / `layer`. Optional
+  `source_db="area.duckdb"` (the duckOSM database it was made from, same build: `link_id` = its
+  `edge_id`) adds `osm_id` and the levels of older GMNS files; `ls.read_boundary(source_db)` is the
+  area outline.
 - **The bundled sample**, no duckOSM needed: `docs/data/monaco_lanes.parquet` and
   `monaco_turns.parquet` in the repo (`gpd.read_parquet` / `pd.read_parquet`).
 - **Any lane table you build.** `lanes` is a GeoDataFrame, one row per lane, each LineString in
@@ -44,7 +45,7 @@ Check: `python -c "import lanestyle, roadstyle; print(roadstyle.__version__)"`.
 ```python
 import lanestyle as ls
 
-lanes, turns = ls.from_gmns("monaco_gmns.duckdb", source_db="monaco.duckdb")
+lanes, turns = ls.from_gmns("monaco_gmns.duckdb")
 m = ls.render_lanes(
     lanes, turns=turns,
     palette="mono",                                    # default: neutral roads, lane colours stand out
@@ -112,7 +113,7 @@ on. List them with `map.getStyle().layers.map(l => l.id)`.
   float64 (a float rounds them and the lane lines can no longer pair a road with its reverse).
   Compare them as strings in JavaScript.
 - **Lane 1 is the leftmost lane** (right-hand traffic). Left-hand areas are not handled yet.
-- **`source_db` must be the same duckOSM build** the GMNS file came from, or no lane gets a level.
+- **`source_db`, if used, must be the same duckOSM build** the GMNS file came from, or no lane gets a level. A GMNS file made before duckOSM 2bfef81 has no levels in `link`, so it needs it.
 - **Widths are mostly the 3.25 m default**: OSM rarely tags `width:lanes`. Lane-to-lane turns
   follow `turn:lanes` where tagged and osm2gmns's defaults elsewhere. A lane-level map, not an
   HD map.

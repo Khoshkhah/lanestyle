@@ -62,6 +62,8 @@ nav:
   - Design notes:
       - design/index.md
       - lanestyle on roadstyle: design/lanestyle_on_roadstyle.md
+      - GMNS CSV input: design/gmns_csv_input.md
+      - One file, link_osm: design/gmns_link_osm.md
 
 plugins:
   - search

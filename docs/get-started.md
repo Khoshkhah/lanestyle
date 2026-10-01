@@ -61,18 +61,19 @@ duckosm gmns monaco.duckdb -m driving -o monaco_gmns.duckdb
 ```python
 import lanestyle as ls
 
-lanes, turns = ls.from_gmns("monaco_gmns.duckdb", source_db="monaco.duckdb")
-ls.render_lanes(lanes, turns=turns, boundary=ls.read_boundary("monaco.duckdb")).save("monaco.html")
+lanes, turns = ls.from_gmns("monaco_gmns.duckdb")
+ls.render_lanes(lanes, turns=turns).save("monaco.html")
 ```
 
-`source_db` is the duckOSM database the GMNS file was made from. It gives each lane its bridge,
-tunnel and `layer`, and the area's boundary when the database has one. The whole chain, step by
-step: [From OSM to lanes](pipeline.md).
+One file is enough: duckOSM writes each link's bridge, tunnel and `layer` into the GMNS file. Two
+optional extras, from the duckOSM database the GMNS file was made from (`source_db=`): the area's
+boundary outline, and the levels for GMNS files made before duckOSM wrote them. The whole chain, step
+by step: [From OSM to lanes](pipeline.md).
 
 Or from the shell, with the script in the repo:
 
 ```bash
-python render_lanes.py monaco_gmns.duckdb monaco.html --source-db monaco.duckdb
+python render_lanes.py monaco_gmns.duckdb monaco.html
 ```
 
 ## What you see
