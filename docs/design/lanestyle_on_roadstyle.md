@@ -149,7 +149,7 @@ one road, as asphalt does. The lines are **lanestyle's own layer**, drawn on top
 | Type | Where | Default |
 |---|---|---|
 | `divider` | between lane k and k+1 of one link (same direction) | white, 0.12 m, dashed 3 m / 9 m |
-| `centre` | left edge of lane 1 on a two-way road (between the two directions); drawn once per road, by the link with the smaller id | white, 0.12 m, dashed 3 m / 3 m |
+| `centre` | left edge of lane 1 on a two-way road (between the two directions); drawn once per road, by the link with the smaller id | white, 0.12 m, solid (Kaveh, 2026-09-30; first dashed 3 m / 3 m) |
 | `edge` | the road's outer edges: the right edge of the last lane, and the left edge of lane 1 on a one-way road | grey, 0.10 m, solid |
 
 - **Geometry, in Python:** each line is the lane's centre line offset by half its width (shapely, in
@@ -162,7 +162,7 @@ one road, as asphalt does. The lines are **lanestyle's own layer**, drawn on top
 
     ```json
     {"lanes": {"lines": {"divider": {"color": "#ffffff", "width_m": 0.12, "dash_m": [3, 9]},
-                         "centre":  {"color": "#ffffff", "width_m": 0.12, "dash_m": [3, 3]},
+                         "centre":  {"color": "#ffffff", "width_m": 0.12, "dash_m": null},
                          "edge":    {"color": "#6b6b6b", "width_m": 0.10, "dash_m": null}},
                "junction_trim_m": 5}}
     ```
