@@ -11,7 +11,9 @@ from pathlib import Path
 
 from lanestyle.lines import lane_lines
 
-_POPUP = ["name", "lane_id", "lane_num", "turn", "use", "width_m", "link_id"]
+_POPUP = ["name", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
+          "layer", "turns_in", "turns_out", "link_id", "reverse_link_id", "osm_id", "from_node_id",
+          "to_node_id"]                       # the ones present and not null show
 _MARKED = ("bus", "bike")          # uses painted over the palette; any other use keeps the road colour
 
 # click a lane: it turns `clicked`, the lanes its turns lead into `turns_into`, U-turns `uturn`.
@@ -70,7 +72,6 @@ _LINES_JS = """<script>
 })();
 </script>
 """
-_HELPERS = ["from_node_id", "to_node_id", "reverse_link_id"]      # for the lines only, not the page
 
 
 def _compact(fc):
@@ -152,9 +153,12 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     if present:
         opts = dict(color_options={"Road class": {}, "Lane use": {"color_by": "use", "colors": present}},
                     color_active="Lane use")
+    if turns is not None and len(turns):                 # how many lanes lead in / out, for the popup
+        g["turns_in"] = g["lane_id"].map(turns.groupby(turns["to_lane"].astype(str)).size()).fillna(0).astype(int)
+        g["turns_out"] = g["lane_id"].map(turns.groupby(turns["from_lane"].astype(str)).size()).fillna(0).astype(int)
     lines = lane_lines(g, s)
     m = rs.render_edges(
-        _break_twins(g.drop(columns=[c for c in _HELPERS if c in g.columns])), palette=palette,
+        _break_twins(g), palette=palette,
         width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=s["casing_m"],
         road_popup=[c for c in _POPUP if c in g.columns],
         **{"select_color": s["colors"]["clicked"], **kwargs},   # roadstyle's own selection glow

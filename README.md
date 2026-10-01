@@ -32,9 +32,10 @@ ls.render_lanes(lanes, turns=turns, palette="mono").save("lanes.html")
 | `use` | no, `auto` | `auto`, `bus` or `bike` |
 | `bridge`, `tunnel`, `layer` | no | the lane's level, read as roadstyle reads them |
 | `name` | no | street-name label (`from_gmns` sets it on lane 1 only) |
-| `link_id`, `lane_num`, `turn` | no | shown in the popup |
+| `link_id`, `lane_num`, `turn`, `lanes`, `osm_id`, `from_node_id`, `to_node_id`, `reverse_link_id` | no | shown in the popup (`from_gmns` sets them; the node ids and `reverse_link_id` also drive the lane lines) |
 
-`turns` (optional) has `from_lane`, `to_lane` and an optional `type` (`uturn` is purple). Other
+`turns` (optional) has `from_lane`, `to_lane` and an optional `type` (`uturn` is purple); the popup
+then also shows how many lanes lead into and out of the clicked lane (`turns_in`, `turns_out`). Other
 `render_lanes` keywords go to `roadstyle.render_edges`, for example a route as an overlay:
 `overlays=[rs.Overlay(route_gdf)]`.
 

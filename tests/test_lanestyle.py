@@ -121,7 +121,9 @@ def test_lines_off_and_without_link_columns(tmp_path):
     assert "lane-lines" not in ls.render_lanes(lanes, settings={"lanes": {"lines": False}}).html
     assert lane_lines(lanes.drop(columns=["lane_num"]).assign(width_m=3.25), ls.lane_settings()) is None
     page = ls.render_lanes(lanes, turns=turns).html
-    assert "reverse_link_id" not in page.split("const style = ", 1)[1].split("</script>", 1)[0]
+    feats = json.loads(page.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
+    p = {f["properties"]["lane_id"]: f["properties"] for f in feats}["1_1"]
+    assert p["highway"] == "secondary" and p["turns_out"] == 2 and p["turns_in"] == 0
 
 
 def test_lines_at_a_sharp_bend_meet_instead_of_crossing():

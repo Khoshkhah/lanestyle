@@ -18,7 +18,8 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
     road), ``link_id``, ``lane_num``, ``turn``, ``from_node_id`` / ``to_node_id`` and
     ``reverse_link_id`` (the same road the other way: same nodes swapped and the same geometry, so
     the two halves of a one-way loop are not a pair; null on a one-way road),
-    for the lane lines, and, when known, ``bridge`` / ``tunnel`` / ``layer``.
+    for the lane lines, ``lanes`` (the link's lane count) and, from ``source_db``, ``bridge`` /
+    ``tunnel`` / ``layer`` and the OSM way ``osm_id``.
 
     Levels come from the GMNS ``link`` if it has those columns, else from ``source_db`` (the
     duckOSM database the GMNS file was made from: ``link_id`` = ``<mode>.edges.edge_id``), else
@@ -40,22 +41,25 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
         con.execute("INSTALL spatial; LOAD spatial;")
         if not _cols(con, g, "lane"):
             raise ValueError(f"no '{g}.lane' in {gmns_db}: build a GMNS db first (duckOSM `duckosm gmns`)")
-        same = " AND ST_Equals(r.geom, k.geom)" if "geom" in _cols(con, g, "link") else ""
+        link_cols = _cols(con, g, "link")
+        same = " AND ST_Equals(r.geom, k.geom)" if "geom" in link_cols else ""
+        nlanes = "k.lanes, " if "lanes" in link_cols else ""
         lvl, src = "", f"lanestyle_src_{uuid.uuid4().hex[:8]}"   # one db instance per file per process:
         # a caller's own connection to gmns_db may already hold an attachment, so never reuse a name
-        if {"bridge", "tunnel", "layer"} <= _cols(con, g, "link"):
+        if {"bridge", "tunnel", "layer"} <= link_cols:
             lvl = ", k.bridge, k.tunnel, k.layer"
         elif source_db:
             con.execute(f"ATTACH '{str(source_db).replace(chr(39), chr(39) * 2)}' AS {src} (READ_ONLY)")
-            if not {"edge_id", "bridge", "tunnel", "layer"} <= _cols(con, mode, "edges", db=src):
+            src_cols = _cols(con, mode, "edges", db=src)
+            if not {"edge_id", "bridge", "tunnel", "layer"} <= src_cols:
                 raise ValueError(f"no {mode}.edges with bridge / tunnel / layer in {source_db}")
-            lvl = ", e.bridge, e.tunnel, e.layer"
+            lvl = ", e.bridge, e.tunnel, e.layer" + (", e.osm_id" if "osm_id" in src_cols else "")
         join = f"LEFT JOIN {src}.{mode}.edges e ON e.edge_id = l.link_id" if lvl.startswith(", e.") else ""
         df = con.execute(
             f"SELECT l.lane_id::VARCHAR AS lane_id, k.facility_type AS highway, l.width AS width_m, "
             f"  COALESCE(l.allowed_uses, 'auto') AS use, "
             f"  CASE WHEN l.lane_num = 1 THEN k.name END AS name, "
-            f"  l.link_id, l.lane_num, l.turn, k.from_node_id, k.to_node_id, "
+            f"  l.link_id, l.lane_num, {nlanes}l.turn, k.from_node_id, k.to_node_id, "
             f"  (SELECT min(r.link_id) FROM {g}.link r WHERE r.from_node_id = k.to_node_id "
             f"     AND r.to_node_id = k.from_node_id AND r.link_id <> k.link_id{same}) AS reverse_link_id"
             f"  {lvl}, ST_AsWKB(l.geom) AS geom "
@@ -75,7 +79,7 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
         if lvl.startswith(", e."):
             con.execute(f"DETACH {src}")
         con.close()
-    for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id"):
+    for c in [c for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id", "osm_id") if c in df]:
         df[c] = df[c].astype("Int64")                       # BIGINT hash ids: never float64
     geom = gpd.GeoSeries.from_wkb(df.pop("geom").map(bytes), crs=4326)
     return gpd.GeoDataFrame(df, geometry=geom, crs=4326), turns
