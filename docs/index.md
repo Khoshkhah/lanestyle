@@ -67,13 +67,13 @@ box, popups, one-way arrows and the `rs*` JavaScript API. lanestyle is to lanes 
 
     [:octicons-arrow-right-24: Settings](reference/settings.md)
 
--   :material-web:{ .lg .middle } **One offline file**
+-   :material-fullscreen:{ .lg .middle } **See it live**
 
     ---
 
-    A self-contained HTML page: open it, serve it, or put it in an iframe.
+    Monaco, lane by lane, full screen in your browser.
 
-    [:octicons-arrow-right-24: Put it on a website](guides/website.md)
+    [:octicons-arrow-right-24: Live map](maps/monaco.html)
 
 </div>
 

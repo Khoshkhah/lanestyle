@@ -38,7 +38,9 @@ ls.render_lanes(lanes, turns=turns).save("monaco.html")
 
 Open `monaco.html`. Zoom past 16 and the lanes take their real width, 3.25 m each; click one.
 
-<iframe src="../maps/monaco.html" loading="lazy" title="Monaco, lane by lane" class="ls-demo"></iframe>
+<iframe src="../maps/monaco.html" loading="lazy" title="Monaco, lane by lane" class="ls-demo" id="monaco-demo" allowfullscreen></iframe>
+<p class="ls-demo-bar"><a href="#" onclick="document.getElementById('monaco-demo').requestFullscreen(); return false;">Full screen</a> ·
+<a href="../maps/monaco.html" target="_blank" rel="noopener">Open in a new tab</a></p>
 
 The page is a plain file: it opens without a server, and only the base-map tiles come from the
 internet. `ls.write_serve("monaco.html")` drops a `serve.py` next to it for when you want a URL

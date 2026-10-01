@@ -53,6 +53,7 @@ nav:
       - From OSM to lanes (duckOSM): pipeline.md
       - Put it on a website: guides/website.md
   - Gallery: gallery.md
+  - Live map: maps/monaco.html
   - Reference:
       - Python API: reference/python.md
       - Settings: reference/settings.md
