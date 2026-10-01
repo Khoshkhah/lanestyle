@@ -9,6 +9,7 @@ Design: docs/design/lanestyle_on_roadstyle.md.
 import json
 from pathlib import Path
 
+from lanestyle.junctions import junction_fillets
 from lanestyle.lines import lane_lines
 
 _POPUP = ["name", "lane_type", "connects", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
@@ -147,21 +148,6 @@ _LABELS_JS = """<script>
 """
 
 
-# round lane ends make joins smooth (a lane meeting the next at an angle), so they stay - except in
-# tunnels: tunnel lanes are see-through, and where lanes and connectors overlap their round ends
-# show as darker discs, so the tunnel layers end flat (connectors join the lanes there)
-_FLAT_ENDS_JS = """<script>
-(function(){
-  function flat(){
-    for (const l of map.getStyle().layers)
-      if (l.type === "line" && l.source === "roads" && l.id.startsWith("roads-tunnel")
-          && map.getLayoutProperty(l.id, "line-cap") === "round")
-        map.setLayoutProperty(l.id, "line-cap", "butt");
-  }
-  if (map.isStyleLoaded()) flat(); else map.once("load", flat);
-})();
-</script>
-"""
 
 
 # bus / bike lanes are coloured with roadstyle's "colour by" (Road class + Lane use, the latter on),
@@ -204,6 +190,51 @@ def _lane_types(g, turns):
         words = " + ".join(_TYPE_WORD.get(t, t) for t in _TYPE_ORDER + sorted(ts - set(_TYPE_ORDER)) if t in ts)
         return (words or "end") if use == "auto" else f"{use} · {words or 'end'}"
     return [label(lane, use) for lane, use in zip(g["lane_id"], g["use"])]
+
+
+# roadstyle ends its tunnel layers flat (butt caps, for the casing's dash ticks); at lane width two
+# flat ends meeting at an angle leave a wedge of background, so lane maps give them round ends like
+# every other road layer (Kaveh: "use curving for road end points")
+_ROUND_ENDS_JS = """<script>
+(function(){
+  function round(){
+    for (const l of map.getStyle().layers)
+      if (l.type === "line" && l.id.startsWith("roads-tunnel") && map.getLayoutProperty(l.id, "line-cap") === "butt")
+        map.setLayoutProperty(l.id, "line-cap", "round");
+  }
+  if (map.isStyleLoaded()) round(); else map.once("load", round);
+})();
+</script>
+"""
+
+# the junction fillets, a fill layer under each band's lanes, in the node's main road's colour
+# (roadstyle's class colours, read from the page)
+_FILLETS_JS = """<script>
+(function(){
+  const F = __FILLETS__;
+  const BEFORE = {tunnel: ["roads-tunnel-fill"], low: ["roads-low-fill"], ground: ["roads-fill"],
+                  high: ["roads-high-fill"], bridge: ["roads-bridge-fill"]};
+  function add(){
+    if (map.getSource("lane-fillets")) return;
+    map.addSource("lane-fillets", {type: "geojson", data: F});
+    const cols = window.RS_CLASS_COLORS || {};
+    const color = ["match", ["get", "cls"]];
+    for (const k in cols) color.push(k, cols[k]);
+    color.push("#888888");
+    const ids = map.getStyle().layers.map(l => l.id);
+    for (const b in BEFORE) {
+      const before = BEFORE[b].find(id => ids.includes(id));
+      if (!before) continue;
+      map.addLayer({id: "lane-fillets-" + b, type: "fill", source: "lane-fillets",
+                    filter: ["==", ["get", "b"], b],
+                    paint: {"fill-color": Object.keys(cols).length ? color : "#888888",
+                            "fill-opacity": b === "tunnel" ? 0.85 : 1}}, before);
+    }
+  }
+  if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
 
 
 def _merge(a, b):
@@ -275,6 +306,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         g["turns_in"] = g["lane_id"].map(turns.groupby(turns["to_lane"].astype(str)).size()).fillna(0).astype(int)
         g["turns_out"] = g["lane_id"].map(turns.groupby(turns["from_lane"].astype(str)).size()).fillna(0).astype(int)
     lines = lane_lines(g, s)
+    fillets = junction_fillets(g, s)             # connectors included: their corners are the usual gaps
     m = rs.render_edges(
         _break_twins(g), palette=palette,
         width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=s["casing_m"],
@@ -282,15 +314,15 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         **{"select_color": s["colors"]["clicked"], **kwargs},   # roadstyle's own selection glow
         settings=_merge(_ROADSTYLE, {k: v for k, v in (settings or {}).items() if k != "lanes"}),
         **opts)
-    js = ""
+    js = _ROUND_ENDS_JS
+    if fillets:
+        js += _FILLETS_JS.replace("__FILLETS__", json.dumps(fillets, separators=(",", ":")))
     if present:                                          # bus / bike colours as rows in the Roads box
         js += _USE_ROWS_JS.replace("__ROWS__", json.dumps([[f"{u} lanes", c] for u, c in present.items()]))
     if lines:
         js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
                .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"]))
                .replace("__MIN_DEVICE_PX__", json.dumps(s.get("line_min_device_px", 1))))
-    if conn is not None and conn.any():
-        js += _FLAT_ENDS_JS
     if turns is not None and len(turns):
         via = {}                                         # (from lane, to lane) -> its connector
         if conn is not None and conn.any():

@@ -13,8 +13,8 @@ with their colours as rows in the Roads box.
 With duckOSM's `lane_connector` table (a curve per lane pair through a junction or where a lane
 shifts sideways), `from_gmns` returns the connectors as rows too (`connector` True): they're drawn
 like lanes, without arrows, lane lines or labels, and a click colours them with the lanes they lead
-into. Lanes keep round ends, so joins stay smooth, except in tunnels, where see-through lanes would show
-overlapping round ends as discs.
+into. Lanes keep round ends everywhere, tunnels included (roadstyle ends its tunnel layers flat), so two
+pieces meeting at an angle leave no wedge.
 
 **New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the full pipeline, from a raw `.osm.pbf`
 through duckOSM to this map.
@@ -70,6 +70,10 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d354
 | `divider` | between lanes of one direction | off-white `#e8e8e8`, 0.15 m, dashed 3 m / 9 m |
 | `centre` | between the two directions of a two-way road (also one mapped as two one-way ways) | off-white `#e8e8e8`, 0.15 m, solid |
 | `edge` | the road's outer edges | grey, 0.10 m, solid |
+
+`"fillet_m": 1.5` (off by default) also paves every gap narrower than 3 m between lane surfaces
+(corners at junctions, slivers where two carriageways diverge) in the nearest lane's colour; it adds
+about 18 s to a Monaco build for a small gain, now that lane ends are round in tunnels too.
 
 They are drawn to scale but never thinner than `line_min_device_px` (1.5) physical pixels of the screen,
 fading in over two zoom levels from `width_m_zoom`. They stop `junction_trim_m` (1 m) short of the

@@ -129,22 +129,89 @@ def lane_lines(lanes, s):
         polys = g.geometry.buffer(g["width_m"] / 2, cap_style="flat")
         surface = {lk: shapely.union_all(p.to_numpy()) for lk, p in polys.groupby(g["link_id"].to_numpy())}
 
-    # a link whose lanes go on into another link's lanes (lane k's end on lane k's start within
-    # 0.3 m, heading on within 45 degrees: duckOSM places a road's pieces as one run) is the same
-    # road: it never cuts those lines. The heading matters: a one-lane one-way road has its lane on
-    # its own line, so at a T-junction the side road's lane starts exactly where the road's ends.
-    goes_on = defaultdict(set)
+    # a lane that goes on into another link's lane (lane k's end on lane k's start within 0.3 m,
+    # heading on within 45 degrees, the same width: duckOSM places a road's pieces as one run) is
+    # the same road. Such lanes form a chain: its lines are offset once from the chain's merged
+    # geometry and each piece takes its share, so the joints have no ticks or kinks; and the chain's
+    # links never cut each other's lines. The heading matters: a one-lane one-way road has its lane
+    # on its own line, so at a T-junction the side road's lane starts exactly where the road's ends.
+    from collections import Counter
+
+    from shapely.geometry import LinearRing, LineString, Point, Polygon
+    from shapely.ops import substring
+
+    rows = list(g.itertuples(index=False))
+    nxt, goes_on = {}, defaultdict(set)
     if {"from_node_id", "to_node_id"} <= set(g.columns):
-        starts = [(r.link_id, r.lane_num, shapely.Point(r.geometry.coords[0]), _start_dir(r.geometry))
-                  for r in g.itertuples(index=False)]
-        tree = shapely.STRtree([p for _, _, p, _ in starts])
-        for r in g.itertuples(index=False):
-            end, (ex, ey) = shapely.Point(r.geometry.coords[-1]), _end_dir(r.geometry)
-            for j in tree.query(end.buffer(0.3)):
-                lk, num, p, (sx, sy) = starts[j]
-                if lk != r.link_id and num == r.lane_num and p.distance(end) <= 0.3 and ex * sx + ey * sy > 0.707:
-                    goes_on[r.link_id].add(lk)
-                    goes_on[lk].add(r.link_id)
+        starts = [(r.link_id, r.lane_num, Point(r.geometry.coords[0]), _start_dir(r.geometry), r.width_m) for r in rows]
+        tree = shapely.STRtree([p for _, _, p, _, _ in starts])
+        cand = {}
+        for i, r in enumerate(rows):
+            end, (ex, ey) = Point(r.geometry.coords[-1]), _end_dir(r.geometry)
+            c = [j for j in tree.query(end.buffer(0.3))
+                 if starts[j][0] != r.link_id and starts[j][1] == r.lane_num and starts[j][2].distance(end) <= 0.3
+                 and ex * starts[j][3][0] + ey * starts[j][3][1] > 0.707 and abs(starts[j][4] - r.width_m) < 0.01]
+            if len(c) == 1:
+                cand[i] = c[0]
+        taken = Counter(cand.values())
+        nxt = {i: j for i, j in cand.items() if taken[j] == 1}
+        for i, j in nxt.items():
+            goes_on[rows[i].link_id].add(rows[j].link_id)
+            goes_on[rows[j].link_id].add(rows[i].link_id)
+    prv = {j: i for i, j in nxt.items()}
+    chains, chain_of = [], {}
+    for start in [i for i in range(len(rows)) if i not in prv] + list(range(len(rows))):
+        if start in chain_of:
+            continue
+        ch, x = [], start
+        while x is not None and x not in chain_of:
+            chain_of[x] = len(chains)
+            ch.append(x)
+            x = nxt.get(x)
+        chains.append(ch)
+    closed = {ci for ci, ch in enumerate(chains) if len(ch) > 1 and nxt.get(ch[-1]) == ch[0]}
+    offset_cache = {}
+
+    def chain_line(ci, off):
+        """The chain's merged lanes offset once: (line, is_ring), or None when the geometry won't do."""
+        if (ci, off) in offset_cache:
+            return offset_cache[ci, off]
+        coords = list(rows[chains[ci][0]].geometry.coords)
+        for i in chains[ci][1:]:
+            c = list(rows[i].geometry.coords)
+            coords += c[1:] if Point(c[0]).distance(Point(coords[-1])) < 0.01 else c
+        res = None
+        if ci in closed:
+            if Point(coords[0]).distance(Point(coords[-1])) >= 0.01:
+                coords.append(coords[0])
+            poly = Polygon(coords)
+            if poly.is_valid and poly.area >= 1.0:
+                ccw = LinearRing(coords).is_ccw
+                buf = poly.buffer(-abs(off) if (off > 0) == ccw else abs(off))     # left (+) is inside a ccw ring
+                if not buf.is_empty and buf.geom_type == "Polygon":
+                    bd = list(buf.exterior.coords)
+                    res = (LineString(bd if LinearRing(bd).is_ccw == ccw else bd[::-1]), True)
+        else:
+            line = LineString(coords).offset_curve(off, join_style="mitre", mitre_limit=2.0)
+            if line.geom_type == "LineString" and not line.is_empty:
+                res = (line, False)
+        offset_cache[ci, off] = res
+        return res
+
+    def piece_line(i, off):
+        """Lane i's line at offset ``off``: its share of the chain's one offset line, else its own."""
+        gm = rows[i].geometry
+        ci = chain_of[i]
+        if len(chains[ci]) > 1 and chain_line(ci, off):
+            line, ring = chain_line(ci, off)
+            s0, s1 = line.project(Point(gm.coords[0])), line.project(Point(gm.coords[-1]))
+            if ring and s1 <= s0:
+                seg = LineString(list(substring(line, s0, line.length).coords) + list(substring(line, 0, s1).coords)[1:])
+            else:
+                seg = substring(line, s0, s1)
+            if seg.geom_type == "LineString" and seg.length >= 0.1:
+                return seg.simplify(0.05)
+        return gm.offset_curve(off, join_style="mitre", mitre_limit=2.0).simplify(0.05)
 
     def cut(node, link, mates):
         """The other links' surface at a node (grown by the trim at a junction): where lines stop.
@@ -159,7 +226,7 @@ def lane_lines(lanes, s):
             cuts[node, link] = u.buffer(trim) if u is not None and trim and node in junction else u
         return cuts[node, link]
     out = []
-    for i, r in enumerate(g.itertuples(index=False)):
+    for i, r in enumerate(rows):
         half = r.width_m / 2
         rev = getattr(r, "reverse_link_id", None)
         todo = []
@@ -182,7 +249,7 @@ def lane_lines(lanes, s):
             st = styles.get(t)
             if not st:
                 continue
-            line = r.geometry.offset_curve(off, join_style="mitre", mitre_limit=2.0).simplify(0.05)
+            line = piece_line(i, off)
             for c in stops:
                 line = line.difference(c)
             line = shapely.line_merge(line) if line.geom_type == "MultiLineString" else line
