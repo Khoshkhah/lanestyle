@@ -52,12 +52,12 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
 
 ## Commands
 
-roadstyle 0.11.0 (released 2026-09-30) has the metre widths. The `roadstyle` conda env's editable
-install points at the `main` checkout (`../roadstyle`), which may be ahead of the release; the
-worktree `../roadstyle-metre-width` is at the release. Put one of them on the path:
+roadstyle 0.11.0 (released 2026-09-30) has the metre widths. The `roadstyle` conda env has an
+editable install of the `main` checkout (`../roadstyle`, at or ahead of the release), so only
+lanestyle itself needs to be on the path:
 
 ```bash
-PY="env PYTHONPATH=src:../roadstyle-metre-width/src $HOME/miniconda3/envs/roadstyle/bin/python"
+PY="env PYTHONPATH=src $HOME/miniconda3/envs/roadstyle/bin/python"
 $PY -m pytest -q tests                                                     # all tests
 $PY -m pytest -q tests/test_lanestyle.py::test_from_gmns_lane_table_and_turns
 $PY render_lanes.py data/monaco_gmns.duckdb out.html --source-db data/monaco.duckdb

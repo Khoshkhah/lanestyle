@@ -94,9 +94,12 @@ def _compact(fc):
             "k": [f["properties"]["k"] for f in fs], "c": [f["geometry"]["coordinates"] for f in fs]}
 
 
-# roadstyle's tunnel look is a faded fill over a dashed casing; with metre widths and no casing the
-# dashes cover the whole lane and show through as blocks, so lanes get a plain casing under the fade
-_ROADSTYLE = {"config": {"tunnel_gap_shade": 0, "tunnel_dash_shade": 0}}
+# roadstyle's tunnel look (a 45 % see-through fill over a dashed casing, light dashes on the fill) is
+# made for road-width lines; at lane width the dashes become blocks, every connector dashes from its
+# own start (fans where they overlap), and see-through lanes show every overlap. Lane maps draw
+# tunnels at 85 %, a plain casing, no fill dashes: a tunnel still reads lighter, overlaps hardly show
+_ROADSTYLE = {"config": {"tunnel_gap_shade": 0, "tunnel_dash_shade": 0, "tunnel_opacity_scale": 0.85,
+                         "tunnel_fill_dash": []}}
 
 
 def _break_twins(g):
