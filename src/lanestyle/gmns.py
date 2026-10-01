@@ -101,3 +101,32 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
         df[c] = df[c].astype("Int64")
     geom = gpd.GeoSeries.from_wkb(df.pop("geom").map(bytes), crs=4326)
     return gpd.GeoDataFrame(df, geometry=geom, crs=4326), turns
+
+
+def read_boundary(db):
+    """The area's boundary from a duckOSM database (``main.boundary``, written when the area was built
+    with one) as a shapely geometry, or None. Pass it on: ``render_lanes(..., boundary=geom)``."""
+    import duckdb
+    from shapely import wkb
+
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        if "geom" not in _cols(con, "main", "boundary"):
+            return None
+        row = con.execute("SELECT ST_AsWKB(ST_Union_Agg(geom)) FROM main.boundary").fetchone()
+    finally:
+        con.close()
+    return wkb.loads(bytes(row[0])) if row and row[0] is not None else None
+
+
+def boundary_from_geojson(path):
+    """A GeoJSON file's geometries as one shapely geometry (plain json + shapely, no GDAL)."""
+    import json
+
+    import shapely
+    from shapely.geometry import shape
+
+    gj = json.loads(open(path, encoding="utf-8").read())
+    feats = gj.get("features", [gj] if gj.get("type") == "Feature" else [{"geometry": gj}])
+    return shapely.union_all([shape(f["geometry"]) for f in feats if f.get("geometry")])

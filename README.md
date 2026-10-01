@@ -46,7 +46,8 @@ then also shows how many lanes lead into and out of the clicked lane (`turns_in`
 each lane gets a **type label** (`lane_type`, along the lane from zoom 18 and in the popup): the turns
 that leave it (`left + thru`, `right`, `U-turn`, `fork`, `merge`), or `end` where none does, the use
 first for a bus or bike lane (`bus · thru`). `"type_label_zoom": null` in the settings turns the labels off. Other
-`render_lanes` keywords go to `roadstyle.render_edges`, for example a route as an overlay:
+`render_lanes` keywords go to `roadstyle.render_edges`, for example the area's dashed outline,
+`boundary=ls.read_boundary(duckosm_db)` (or `ls.boundary_from_geojson(path)`), or a route as an overlay:
 `overlays=[rs.Overlay(route_gdf)]`.
 
 ## Settings

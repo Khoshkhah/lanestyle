@@ -235,3 +235,18 @@ def test_lane_connectors_drawn_and_coloured(tmp_path):
     t = json.loads(html.split("const T = ", 1)[1].split(", C = ", 1)[0])
     assert "1_1>2_1" in t["1_1"][0]
     assert 'l.id.startsWith("roads-tunnel")' in html           # tunnel lanes end flat, the rest round
+
+
+def test_read_boundary(tmp_path):
+    """The area's boundary from a duckOSM db (main.boundary), None without one; drawn as an outline."""
+    gmns, src = _dbs(tmp_path)
+    assert ls.read_boundary(src) is None
+    con = duckdb.connect(str(src))
+    con.execute("INSTALL spatial; LOAD spatial; CREATE TABLE main.boundary(name VARCHAR, geom GEOMETRY)")
+    con.execute("INSERT INTO main.boundary VALUES ('x', ST_GeomFromText('POLYGON((17.99 59.29, 18.02 59.29, 18.02 59.33, 17.99 59.33, 17.99 59.29))'))")
+    con.close()
+    b = ls.read_boundary(src)
+    assert b is not None and b.geom_type == "Polygon"
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    st = json.loads(ls.render_lanes(lanes, turns=turns, boundary=b).html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])
+    assert "boundary" in st["sources"] and any(l["id"] == "boundary" for l in st["layers"])
