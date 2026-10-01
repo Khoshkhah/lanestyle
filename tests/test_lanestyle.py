@@ -164,3 +164,22 @@ def test_loop_halves_are_not_a_two_way_pair(tmp_path):
     html = ls.render_lanes(lanes).html
     feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
     assert not any(f["properties"].get("__rs_twoway") for f in feats)
+
+
+def test_paired_one_way_roads_share_one_centre_line():
+    """A road mapped as two one-way ways, placed side by side by duckOSM: the lane 1 left edges lie
+    on each other, so they make one centre line (white), not two edge lines (Tunnel Dorsale)."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from lanestyle.lines import lane_lines
+
+    m = 1 / 111_320
+    y = lambda off: 43.73 + off * m                           # metres north of the midline
+    lanes = gpd.GeoDataFrame(
+        {"link_id": [1, 1, 2, 2], "lane_num": [1, 2, 1, 2], "width_m": [3.25] * 4},
+        geometry=[LineString([(7.42, y(-1.625)), (7.423, y(-1.625))]),   # east, south of the midline
+                  LineString([(7.42, y(-4.875)), (7.423, y(-4.875))]),
+                  LineString([(7.423, y(1.625)), (7.42, y(1.625))]),     # west, north of it
+                  LineString([(7.423, y(4.875)), (7.42, y(4.875))])], crs=4326)
+    kinds = sorted(f["properties"]["t"] for f in lane_lines(lanes, ls.lane_settings())["features"])
+    assert kinds == ["centre", "divider", "divider", "edge", "edge"]

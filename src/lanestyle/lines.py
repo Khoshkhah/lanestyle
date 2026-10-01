@@ -32,6 +32,46 @@ def _coords(g):
     return {"type": "MultiLineString", "coordinates": [r(p.coords) for p in g.geoms]}
 
 
+def _paired(g):
+    """{link_id: partner link_id} for one-way links whose lane 1's left edge lies on another one-way
+    link's lane 1 left edge, running the other way, for at least half its length: a road mapped as
+    two one-way ways (duckOSM places them side by side, docs/design/gmns_paired_carriageways.md).
+    Their shared edge is the centre line, not two edge lines."""
+    import pandas as pd
+    import shapely
+
+    rows = [r for r in g.itertuples(index=False)
+            if r.lane_num == 1 and pd.isna(getattr(r, "reverse_link_id", None))]
+    left = [r.geometry.offset_curve(r.width_m / 2, join_style="mitre", mitre_limit=2.0) for r in rows]
+    keep = [k for k, a in enumerate(left) if a.geom_type == "LineString" and not a.is_empty]
+    rows, left = [rows[k] for k in keep], [left[k] for k in keep]
+    if not rows:
+        return {}
+    tree = shapely.STRtree(left)
+    out = {}
+    for i, a in enumerate(left):
+        if rows[i].link_id in out:
+            continue
+        near = a.buffer(0.6)
+        for j in tree.query(near):
+            b = left[j]
+            if rows[j].link_id in (rows[i].link_id, *out):
+                continue
+            (ax, ay), (bx, by) = _dir(a), _dir(b)
+            if ax * bx + ay * by > -0.866:                       # not running the other way
+                continue
+            if b.intersection(near).length >= 0.5 * min(a.length, b.length):
+                out[rows[i].link_id], out[rows[j].link_id] = rows[j].link_id, rows[i].link_id
+                break
+    return out
+
+
+def _dir(line):
+    (x0, y0), (x1, y1) = line.coords[0], line.coords[-1]
+    n = math.hypot(x1 - x0, y1 - y0) or 1.0
+    return (x1 - x0) / n, (y1 - y0) / n
+
+
 def lane_lines(lanes, s):
     """The lines between and beside lanes as a GeoJSON FeatureCollection; properties ``t`` (type:
     ``divider`` / ``centre`` / ``edge``), ``b`` (roadstyle band) and ``k`` (the line's width in
@@ -40,8 +80,9 @@ def lane_lines(lanes, s):
 
     In a link, lane 1 is the leftmost lane in the direction of travel and the lane numbers grow to
     the right (duckOSM, right-hand traffic): lane k's right edge is the divider to lane k+1, the
-    last lane's the road's edge, lane 1's left edge the centre line (two-way: a ``reverse_link_id``,
-    drawn once, by the smaller link id) or the edge (one-way). At each end node a line stops where it
+    last lane's the road's edge, lane 1's left edge the centre line (two-way: a ``reverse_link_id``;
+    or a one-way link paired with the opposite one beside it, ``_paired``; drawn once, by the smaller
+    link id) or the edge (one-way). At each end node a line stops where it
     enters the surface of the other links there (every link at that node but its own and its
     reverse): at a junction (3 or more neighbours) ``junction_trim_m`` short of it, elsewhere right
     at it, so the inner edges of a sharp bend meet instead of crossing."""
@@ -58,6 +99,7 @@ def lane_lines(lanes, s):
     lat = lanes.geometry.representative_point().y.to_numpy()
     last = g.groupby("link_id")["lane_num"].transform("max").to_numpy()
     trim = float(s.get("junction_trim_m") or 0)
+    partner = _paired(g)
     at, surface, cuts = defaultdict(set), {}, {}      # node -> its links; link -> its lanes' surface
     if {"from_node_id", "to_node_id"} <= set(g.columns):
         nb = defaultdict(set)
@@ -70,12 +112,13 @@ def lane_lines(lanes, s):
         polys = g.geometry.buffer(g["width_m"] / 2, cap_style="flat")
         surface = {lk: shapely.union_all(p.to_numpy()) for lk, p in polys.groupby(g["link_id"].to_numpy())}
 
-    def cut(node, link, rev):
-        """The other links' surface at a node (grown by the trim at a junction): where lines stop."""
+    def cut(node, link, mates):
+        """The other links' surface at a node (grown by the trim at a junction): where lines stop.
+        ``mates``: the link's reverse and paired carriageway, whose surface it shares an edge with."""
         if node not in at:
             return None
         if (node, link) not in cuts:
-            other = [surface[k] for k in at[node] if k != link and not (rev is not None and k == rev)]
+            other = [surface[k] for k in at[node] if k != link and k not in mates]
             u = shapely.union_all(other) if other else None
             cuts[node, link] = u.buffer(trim) if u is not None and trim and node in junction else u
         return cuts[node, link]
@@ -84,15 +127,20 @@ def lane_lines(lanes, s):
         half = r.width_m / 2
         rev = getattr(r, "reverse_link_id", None)
         todo = []
+        mate = partner.get(r.link_id)
         if r.lane_num == 1:
-            if rev is None or pd.isna(rev):
+            if not (rev is None or pd.isna(rev)):
+                if r.link_id < rev:
+                    todo.append(("centre", half))
+            elif mate is not None:                           # one side of a road mapped as 2 ways
+                if r.link_id < mate:
+                    todo.append(("centre", half))
+            else:
                 todo.append(("edge", half))
-            elif r.link_id < rev:
-                todo.append(("centre", half))
         todo.append(("edge" if r.lane_num == last[i] else "divider", -half))
-        rv = None if rev is None or pd.isna(rev) else rev
-        stops = [c for c in (cut(getattr(r, "from_node_id", None), r.link_id, rv),
-                             cut(getattr(r, "to_node_id", None), r.link_id, rv)) if c is not None]
+        mates = {m for m in (None if rev is None or pd.isna(rev) else rev, mate) if m is not None}
+        stops = [c for c in (cut(getattr(r, "from_node_id", None), r.link_id, mates),
+                             cut(getattr(r, "to_node_id", None), r.link_id, mates)) if c is not None]
         band, sec = _band(r), 1 / math.cos(math.radians(lat[i]))
         for t, off in todo:
             st = styles.get(t)

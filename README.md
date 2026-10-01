@@ -56,7 +56,7 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d354
 | Type | Where | Default |
 |---|---|---|
 | `divider` | between lanes of one direction | white, 0.12 m, dashed 3 m / 9 m |
-| `centre` | between the two directions of a two-way road | white, 0.12 m, solid |
+| `centre` | between the two directions of a two-way road (also one mapped as two one-way ways) | white, 0.12 m, solid |
 | `edge` | the road's outer edges | grey, 0.10 m, solid |
 
 They stop `junction_trim_m` (1 m) short of the other roads' surface at a junction, and need
