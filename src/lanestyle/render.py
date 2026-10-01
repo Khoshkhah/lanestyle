@@ -46,16 +46,20 @@ _LINES_JS = """<script>
   const L = {type: "FeatureCollection", features: D.c.map((c, i) => ({type: "Feature",
     properties: {t: D.types[D.t[i]], b: D.bands[D.b[i]], k: D.k[i]},
     geometry: {type: Array.isArray(c[0][0]) ? "MultiLineString" : "LineString", coordinates: c}}))};
-  const AFTER = {tunnel: "roads-tunnel-fill", low: "roads-low-fill", ground: "roads-fill",
-                 high: "roads-high-fill", bridge: "roads-bridge-fill"};
+  // after the band's last fill layer: roadstyle (main, 2026-09-30) draws tunnel stretches at street
+  // level (roads-tunnelgr-*, after the under-road pieces); older versions have only roads-tunnel-fill
+  const AFTER = {tunnel: ["roads-tunnelgr-fill", "roads-tunnel-under-fill", "roads-tunnel-fill"],
+                 low: ["roads-low-fill"], ground: ["roads-fill"], high: ["roads-high-fill"],
+                 bridge: ["roads-bridge-fill"]};
   const px = z => 512 * Math.pow(2, z) / 40075016.686;
   function add(){
     if (map.getSource("lane-lines")) return;
     map.addSource("lane-lines", {type: "geojson", data: L});
     const ids = map.getStyle().layers.map(l => l.id);
     for (const b in AFTER) {
-      const i = ids.indexOf(AFTER[b]);
-      if (i < 0) continue;
+      const after = AFTER[b].find(id => ids.includes(id));
+      if (!after) continue;
+      const i = ids.indexOf(after);
       for (const t in S) {
         const s = S[t];
         if (!s) continue;
