@@ -1,0 +1,13 @@
+{
+  "name": "lanestyle",
+  "version": "0.1.0",
+  "description": "Lane-level road maps in one offline HTML page: a skill for drawing every lane at its real width, with lane lines, turns and a click that shows where a lane leads, from a lane table or a duckOSM GMNS database.",
+  "author": {
+    "name": "Kaveh",
+    "url": "https://github.com/Khoshkhah"
+  },
+  "homepage": "https://khoshkhah.github.io/lanestyle/",
+  "repository": "https://github.com/Khoshkhah/lanestyle",
+  "license": "MIT",
+  "keywords": ["lanes", "lane-level", "gmns", "openstreetmap", "roadstyle", "duckosm", "maplibre", "skill"]
+}

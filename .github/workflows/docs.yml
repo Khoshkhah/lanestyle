@@ -36,7 +36,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - run: pip install mkdocs-material pyarrow .
+      - run: pip install pyarrow ".[docs]"
 
       # The live map (docs/maps/monaco.html) is built here, not committed. The CARTO base map needs
       # a key (repo secret CARTO_API_KEY, restricted to khoshkhah.github.io in the CARTO dashboard);

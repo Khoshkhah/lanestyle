@@ -27,6 +27,7 @@ dependencies = ["roadstyle>=0.11", "geopandas", "shapely>=2", "duckdb", "pandas"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "mkdocs-llmstxt>=0.5,<0.6"]
 
 [project.urls]
 Homepage = "https://github.com/Khoshkhah/lanestyle"

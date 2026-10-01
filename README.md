@@ -91,6 +91,14 @@ Column by column: [The lane table](https://khoshkhah.github.io/lanestyle/guides/
 settings: [Settings](https://khoshkhah.github.io/lanestyle/reference/settings/) ·
 the whole chain from a `.osm.pbf`: [From OSM to lanes](https://khoshkhah.github.io/lanestyle/pipeline/).
 
+## For AI agents
+
+- **Using lanestyle:** the agent skill [`skills/lanestyle/SKILL.md`](skills/lanestyle/SKILL.md) has the install, the lane table, the one call, the JavaScript API and the traps in one page. In Claude Code: `/plugin marketplace add Khoshkhah/lanestyle`, then `/plugin install lanestyle@lanestyle`.
+- **The docs as text:** [`llms.txt`](https://khoshkhah.github.io/lanestyle/llms.txt) and [`llms-full.txt`](https://khoshkhah.github.io/lanestyle/llms-full.txt) (every page, one file).
+- **Changing lanestyle:** [`AGENTS.md`](AGENTS.md) has the layout, the commands and the project's rules.
+
+More: [AI agents](https://khoshkhah.github.io/lanestyle/guides/agents/).
+
 ## License
 
 MIT

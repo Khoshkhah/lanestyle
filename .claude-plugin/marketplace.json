@@ -1,0 +1,15 @@
+{
+  "name": "lanestyle",
+  "description": "Lane-level road maps in one offline HTML page: the lanestyle agent skill.",
+  "owner": {
+    "name": "Kaveh",
+    "url": "https://github.com/Khoshkhah"
+  },
+  "plugins": [
+    {
+      "name": "lanestyle",
+      "source": "./",
+      "description": "Lane-level road maps in one offline HTML page: a skill for drawing every lane at its real width, with lane lines, turns and a click that shows where a lane leads, from a lane table or a duckOSM GMNS database."
+    }
+  ]
+}
