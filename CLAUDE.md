@@ -42,7 +42,7 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
   (Kaveh, 2026-09-30): duckOSM branch `paired-carriageways` places a road mapped as two one-way ways
   as one road (`docs/design/gmns_paired_carriageways.md` there). Lane-overlap reports are about our
   placement, not OSM data.
-- Build and check **Monaco only** (`renders/lanes/build.py`); Södermalm and Tartu aren't needed.
+- Work on **Monaco only** (Kaveh, 2026-09-30): build, check and count there; no other areas.
 - Before lanestyle goes public on GitHub, the Gmail address must be removed from the commit history.
   Ask whether to start a fresh history or rewrite the existing commits.
 - Non-trivial features: write a design note in `docs/design/` and get Kaveh's OK before coding.
@@ -60,15 +60,13 @@ PY="env PYTHONPATH=src:../roadstyle-metre-width/src $HOME/miniconda3/envs/roadst
 $PY -m pytest -q tests                                                     # all tests
 $PY -m pytest -q tests/test_lanestyle.py::test_from_gmns_lane_table_and_turns
 $PY render_lanes.py data/monaco_gmns.duckdb out.html --source-db data/monaco.duckdb
-$PY renders/lanes/build.py      # the Monaco test map -> renders/lanes/ (add sodermalm / tartu by name)
+$PY renders/lanes/build.py      # the Monaco test map -> renders/lanes/
 $PY renders/lanes/check_spot.py monaco LON LAT TAG 19.5 20.5   # screenshots of a reported spot
 ```
 
 The tests build a tiny GMNS db and source db in `tmp_path`, so they need no real data. Test data
-lives in `data/` (gitignored): `monaco.duckdb` and `<area>_gmns.duckdb`, rebuilt with
-`duckosm gmns <db> -m driving -o data/<area>_gmns.duckdb`. The July GMNS files in
-`../duckOSM/data/db/` don't match today's duckOSM dbs (0 shared ids), so don't pair those with
-`source_db`.
+lives in `data/` (gitignored): `monaco.duckdb` and `monaco_gmns.duckdb`, rebuilt with
+`duckosm gmns data/monaco.duckdb -m driving -o data/monaco_gmns.duckdb`.
 
 ## Gotchas
 
