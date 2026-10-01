@@ -197,3 +197,16 @@ def test_turns_pair_movement_lanes_in_order(tmp_path):
     con.close()
     _, turns = ls.from_gmns(gmns)
     assert set(map(tuple, turns[turns["type"] == "thru"][["from_lane", "to_lane"]].values)) == {("1_2", "2_1")}
+
+
+def test_lane_type_labels(tmp_path):
+    """Each lane is labelled with what it's for: the turns leaving it, 'end' where none does, the
+    use first for a bus lane; the labels layer is added to the page."""
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    html = ls.render_lanes(lanes, turns=turns).html
+    feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
+    t = {f["properties"]["lane_id"]: f["properties"]["lane_type"] for f in feats}
+    assert t == {"1_1": "U-turn + thru", "1_2": "bus · thru", "2_1": "end", "3_1": "end"}
+    assert '"lane-type-labels"' in html
+    assert "lane-type-labels" not in ls.render_lanes(lanes, turns=turns, settings={"lanes": {"type_label_zoom": None}}).html

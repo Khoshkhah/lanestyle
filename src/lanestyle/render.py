@@ -11,7 +11,7 @@ from pathlib import Path
 
 from lanestyle.lines import lane_lines
 
-_POPUP = ["name", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
+_POPUP = ["name", "lane_type", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
           "layer", "turns_in", "turns_out", "link_id", "reverse_link_id", "osm_id", "from_node_id",
           "to_node_id"]                       # the ones present and not null show
 _MARKED = ("bus", "bike")          # uses painted over the palette; any other use keeps the road colour
@@ -112,6 +112,43 @@ def _break_twins(g):
     return g.set_geometry(geoms, crs=g.crs)
 
 
+# a lane's type label: the turns that leave it, in this order, as these words
+_TYPE_ORDER = ["left", "uturn", "thru", "diverge", "merge", "right"]
+_TYPE_WORD = {"left": "left", "uturn": "U-turn", "thru": "thru", "diverge": "fork", "merge": "merge",
+              "right": "right"}
+
+# the type label along each lane (lane_type), from zoom __ZOOM__, in roadstyle's street-name font
+_LABELS_JS = """<script>
+(function(){
+  function add(){
+    if (map.getLayer("lane-type-labels")) return;
+    const font = map.getLayer("roads-labels") ? map.getLayoutProperty("roads-labels", "text-font") : null;
+    map.addLayer({id: "lane-type-labels", type: "symbol", source: "roads", minzoom: __ZOOM__,
+      layout: Object.assign({"symbol-placement": "line", "text-field": ["get", "lane_type"], "text-size": 11,
+                             "symbol-spacing": 220, "text-keep-upright": true}, font ? {"text-font": font} : {}),
+      paint: {"text-color": "#1b1b1b", "text-halo-color": "#ffffff", "text-halo-width": 1.5}});
+  }
+  if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
+
+
+def _lane_types(g, turns):
+    """Each lane's type label: the turns that leave it (``left + thru``, ``U-turn``, ``fork``, ``merge``)
+    or ``end`` where none does; a bus or bike lane says so first (``bus · thru``)."""
+    out = {}
+    types = turns["type"] if "type" in turns else ["turn"] * len(turns)
+    for a, t in zip(turns["from_lane"].astype(str), types):
+        out.setdefault(a, set()).add(t)
+
+    def label(lane, use):
+        ts = out.get(lane, set())
+        words = " + ".join(_TYPE_WORD.get(t, t) for t in _TYPE_ORDER + sorted(ts - set(_TYPE_ORDER)) if t in ts)
+        return (words or "end") if use == "auto" else f"{use} · {words or 'end'}"
+    return [label(lane, use) for lane, use in zip(g["lane_id"], g["use"])]
+
+
 def _merge(a, b):
     """``a`` updated by ``b``, nested dicts merged (state only what changes)."""
     out = dict(a)
@@ -153,6 +190,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     if present:
         opts = dict(color_options={"Road class": {}, "Lane use": {"color_by": "use", "colors": present}},
                     color_active="Lane use")
+    if turns is not None and len(turns):                 # what each lane is for (label + popup)
+        g["lane_type"] = _lane_types(g, turns)
     if turns is not None and len(turns):                 # how many lanes lead in / out, for the popup
         g["turns_in"] = g["lane_id"].map(turns.groupby(turns["to_lane"].astype(str)).size()).fillna(0).astype(int)
         g["turns_out"] = g["lane_id"].map(turns.groupby(turns["from_lane"].astype(str)).size()).fillna(0).astype(int)
@@ -170,6 +209,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
                .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"])))
     if turns is not None and len(turns):
         js += _click_js(turns, s)
+        if s.get("type_label_zoom") is not None:
+            js += _LABELS_JS.replace("__ZOOM__", json.dumps(s["type_label_zoom"]))
     if not js:
         return m
     html = m.html

@@ -35,7 +35,10 @@ ls.render_lanes(lanes, turns=turns, palette="mono").save("lanes.html")
 | `link_id`, `lane_num`, `turn`, `lanes`, `osm_id`, `from_node_id`, `to_node_id`, `reverse_link_id` | no | shown in the popup (`from_gmns` sets them; the node ids and `reverse_link_id` also drive the lane lines) |
 
 `turns` (optional) has `from_lane`, `to_lane` and an optional `type` (`uturn` is purple); the popup
-then also shows how many lanes lead into and out of the clicked lane (`turns_in`, `turns_out`). Other
+then also shows how many lanes lead into and out of the clicked lane (`turns_in`, `turns_out`), and
+each lane gets a **type label** (`lane_type`, along the lane from zoom 18 and in the popup): the turns
+that leave it (`left + thru`, `right`, `U-turn`, `fork`, `merge`), or `end` where none does, the use
+first for a bus or bike lane (`bus · thru`). `"type_label_zoom": null` in the settings turns the labels off. Other
 `render_lanes` keywords go to `roadstyle.render_edges`, for example a route as an overlay:
 `overlays=[rs.Overlay(route_gdf)]`.
 
@@ -43,7 +46,7 @@ then also shows how many lanes lead into and out of the clicked lane (`turns_in`
 
 roadstyle's own settings apply (`roadstyle.json`, or `settings=`). lanestyle's defaults are in
 [`src/lanestyle/data/lanestyle.json`](src/lanestyle/data/lanestyle.json): lane colours, click
-colours, the lane lines, `junction_trim_m`, `default_width_m`, `casing_m`, `width_m_zoom`. Override
+colours, the lane lines, `junction_trim_m`, `type_label_zoom`, `default_width_m`, `casing_m`, `width_m_zoom`. Override
 them the roadstyle way, stating only what changes: a `lanestyle.json` in the current folder, or a
 `"lanes"` key in `settings=`:
 
