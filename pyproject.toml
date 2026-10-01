@@ -4,14 +4,36 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lanestyle"
-version = "0.4.0"
-description = "Lane-level maps on roadstyle, from a lane table or a duckOSM GMNS db"
-authors = [{ name = "Kaveh" }]
+version = "0.1.0"
+description = "Lane-level road maps on roadstyle: every lane drawn at its real width, with lane lines, turns and a click-to-see-connectivity view, from a lane table or a duckOSM GMNS database"
+readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["roadstyle>=0.11", "geopandas", "shapely", "duckdb"]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Kaveh" }]
+keywords = ["lanes", "lane-level map", "GMNS", "OpenStreetMap", "roadstyle", "duckOSM", "MapLibre", "traffic"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = ["roadstyle>=0.11", "geopandas", "shapely>=2", "duckdb", "pandas"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/Khoshkhah/lanestyle"
+Repository = "https://github.com/Khoshkhah/lanestyle"
+Issues = "https://github.com/Khoshkhah/lanestyle/issues"
+roadstyle = "https://github.com/Khoshkhah/roadstyle"
+duckOSM = "https://github.com/Khoshkhah/duckOSM"
 
 [tool.setuptools.packages.find]
 where = ["src"]

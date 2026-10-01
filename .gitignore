@@ -1,10 +1,11 @@
-__pycache__/
-*.pyc
 *.egg-info/
+*.geojson
+*.html
+*.pyc
 .venv/
+/*.png
+/data/
+__pycache__/
 build/
 dist/
-*.html
-*.geojson
 renders/
-/data/

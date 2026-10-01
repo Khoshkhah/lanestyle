@@ -3,5 +3,5 @@ drawn one line per lane, at its width in metres."""
 from lanestyle.gmns import boundary_from_geojson, from_gmns, read_boundary
 from lanestyle.render import lane_settings, render_lanes, write_serve
 
-__version__ = "0.4.0"
+__version__ = "0.1.0"
 __all__ = ["from_gmns", "read_boundary", "boundary_from_geojson", "render_lanes", "lane_settings", "write_serve"]
