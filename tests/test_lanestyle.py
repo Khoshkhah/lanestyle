@@ -185,3 +185,15 @@ def test_paired_one_way_roads_share_one_centre_line():
                   LineString([(7.423, y(4.875)), (7.42, y(4.875))])], crs=4326)
     kinds = sorted(f["properties"]["t"] for f in lane_lines(lanes, ls.lane_settings())["features"])
     assert kinds == ["centre", "divider", "divider", "edge", "edge"]
+
+
+def test_turns_pair_movement_lanes_in_order(tmp_path):
+    """A movement's lane ranges pair in order (duckOSM / osm2gmns): link 1's lane 2 into link 2's
+    lane 1 only, not lane 1 as well."""
+    gmns, src = _dbs(tmp_path)
+    con = duckdb.connect(str(gmns))
+    con.execute("UPDATE gmns_driving.movement SET start_ib_lane=2, end_ib_lane=2, start_ob_lane=1, end_ob_lane=1 "
+                "WHERE type='thru'")
+    con.close()
+    _, turns = ls.from_gmns(gmns)
+    assert set(map(tuple, turns[turns["type"] == "thru"][["from_lane", "to_lane"]].values)) == {("1_2", "2_1")}

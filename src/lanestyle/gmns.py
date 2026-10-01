@@ -27,8 +27,9 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
 
     ``turns``: a DataFrame ``from_lane``, ``to_lane``, ``type`` (the movement type; ``uturn`` is
     drawn in its own colour), from ``movement``: each lane of the inbound link in
-    ``start_ib_lane``..``end_ib_lane`` to each lane of the outbound link in
-    ``start_ob_lane``..``end_ob_lane`` (NULL = every lane). Empty without a movement table."""
+    ``start_ib_lane``..``end_ib_lane`` into the outbound lane at the same place in
+    ``start_ob_lane``..``end_ob_lane`` (equal-length ranges paired in order, as osm2gmns and duckOSM
+    write them; NULL = every lane). Empty without a movement table."""
     import uuid
 
     import duckdb
@@ -73,7 +74,7 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
                 f"JOIN {g}.lane il ON il.link_id = m.ib_link_id AND (m.start_ib_lane IS NULL OR "
                 f"  il.lane_num BETWEEN m.start_ib_lane AND COALESCE(m.end_ib_lane, m.start_ib_lane)) "
                 f"JOIN {g}.lane ol ON ol.link_id = m.ob_link_id AND (m.start_ob_lane IS NULL OR "
-                f"  ol.lane_num BETWEEN m.start_ob_lane AND COALESCE(m.end_ob_lane, m.start_ob_lane)) "
+                f"  m.start_ib_lane IS NULL OR ol.lane_num = m.start_ob_lane + il.lane_num - m.start_ib_lane) "
                 f"ORDER BY 1, 2").df()
     finally:
         if lvl.startswith(", e."):
