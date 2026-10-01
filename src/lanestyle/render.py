@@ -11,7 +11,7 @@ from pathlib import Path
 
 from lanestyle.lines import lane_lines
 
-_POPUP = ["name", "lane_type", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
+_POPUP = ["name", "lane_type", "connects", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
           "layer", "turns_in", "turns_out", "from_lane", "to_lane", "link_id", "reverse_link_id", "osm_id", "from_node_id",
           "to_node_id"]                       # the ones present and not null show
 _MARKED = ("bus", "bike")          # uses painted over the palette; any other use keeps the road colour
@@ -124,6 +124,7 @@ _LABELS_JS = """<script>
     if (map.getLayer("lane-type-labels")) return;
     const font = map.getLayer("roads-labels") ? map.getLayoutProperty("roads-labels", "text-font") : null;
     map.addLayer({id: "lane-type-labels", type: "symbol", source: "roads", minzoom: __ZOOM__,
+      filter: ["!", ["to-boolean", ["get", "connector"]]],     // lanes only; a connector says it in its popup
       layout: Object.assign({"symbol-placement": "line", "text-field": ["get", "lane_type"], "text-size": 11,
                              "symbol-spacing": 220, "text-keep-upright": true}, font ? {"text-font": font} : {}),
       paint: {"text-color": "#1b1b1b", "text-halo-color": "#ffffff", "text-halo-width": 1.5}});
@@ -210,8 +211,25 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         g["oneway"] = ~conn
     if turns is not None and len(turns):                 # what each lane is for (label + popup)
         g["lane_type"] = _lane_types(g, turns)
-        if conn is not None:
-            g.loc[conn, "lane_type"] = None
+        if conn is not None and conn.any():              # a connector says what it is, in words
+            kind = dict(zip(zip(turns["from_lane"].astype(str), turns["to_lane"].astype(str)),
+                            turns["type"] if "type" in turns else ["turn"] * len(turns)))
+            road = dict(zip(g["lane_id"], g.get("name", [None] * len(g))))
+            num = dict(zip(g["lane_id"], g.get("lane_num", [None] * len(g))))
+            first = {}                                   # a road's name sits on its lane 1 only
+            for lid, nm in road.items():
+                if isinstance(nm, str):
+                    first[str(lid).rsplit("_", 1)[0]] = nm
+
+            def says(a, b):
+                def lane(x):
+                    n = num.get(x)
+                    nm = first.get(str(x).rsplit("_", 1)[0]) or "(unnamed road)"
+                    return f"lane {int(n)} of {nm}" if n == n and n is not None else str(x)
+                return f"{lane(a)} → {lane(b)}"
+            g.loc[conn, "lane_type"] = ["connector · " + _TYPE_WORD.get(kind.get((a, b)), kind.get((a, b)) or "turn")
+                                         for a, b in zip(g.loc[conn, "from_lane"], g.loc[conn, "to_lane"])]
+            g.loc[conn, "connects"] = [says(a, b) for a, b in zip(g.loc[conn, "from_lane"], g.loc[conn, "to_lane"])]
     if turns is not None and len(turns):                 # how many lanes lead in / out, for the popup
         g["turns_in"] = g["lane_id"].map(turns.groupby(turns["to_lane"].astype(str)).size()).fillna(0).astype(int)
         g["turns_out"] = g["lane_id"].map(turns.groupby(turns["from_lane"].astype(str)).size()).fillna(0).astype(int)

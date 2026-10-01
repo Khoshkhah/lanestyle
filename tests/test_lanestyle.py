@@ -228,7 +228,9 @@ def test_lane_connectors_drawn_and_coloured(tmp_path):
     html = ls.render_lanes(lanes, turns=turns).html
     feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
     p = {f["properties"]["lane_id"]: f["properties"] for f in feats}
-    assert p["1_1>2_1"]["oneway"] is False and p["1_1"]["oneway"] is True and p["1_1>2_1"].get("lane_type") is None
+    assert p["1_1>2_1"]["oneway"] is False and p["1_1"]["oneway"] is True
+    assert p["1_1>2_1"]["lane_type"] == "connector · thru"
+    assert p["1_1>2_1"]["connects"] == "lane 1 of Main St → lane 1 of Bridge Rd"
     t = json.loads(html.split("const T = ", 1)[1].split(", C = ", 1)[0])
     assert "1_1>2_1" in t["1_1"][0]
     assert '"line-cap", "butt"' in html                         # lanes end flat once connectors join them
