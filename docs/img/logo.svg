@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="t">
+  <title id="t">lanestyle</title>
+  <defs>
+    <clipPath id="c"><rect x="4" y="4" width="120" height="120" rx="28"/></clipPath>
+    <path id="r" d="M34 136 C34 84 94 90 94 58 C94 30 60 22 60 -8"/>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#3F51B5"/>
+  <g clip-path="url(#c)" fill="none">
+    <use href="#r" stroke="#FFFFFF" stroke-width="40"/>
+    <use href="#r" stroke="#5C6BC0" stroke-width="33"/>
+    <use href="#r" stroke="#FFFFFF" stroke-width="4" stroke-dasharray="9 8"/>
+  </g>
+</svg>

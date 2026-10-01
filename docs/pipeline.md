@@ -14,7 +14,7 @@ connectivity, street names, one-way arrows, base maps, and an optional lane rout
    step 1                  steps 2–3 (duckOSM)                   steps 4–5 (lanestyle)
 ```
 
-Two sibling repos do the work: **[duckOSM](../../duckOSM)** turns OSM into a routable network and a
+Two sibling repos do the work: **[duckOSM](https://github.com/Khoshkhah/duckOSM)** turns OSM into a routable network and a
 GMNS db (with per-lane geometry); **lanestyle** (this repo) renders it with
 roadstyle. It needs the GMNS db file, plus the duckOSM db it was made from for bridge / tunnel /
 layer levels.
@@ -24,7 +24,7 @@ layer levels.
 ## Prerequisites
 
 - **duckOSM** checked out and installed (its own env): `pip install -e .` in `../duckOSM`.
-- **lanestyle** installed (this repo): `pip install -e .` — deps `roadstyle>=0.10`, `geopandas`, `duckdb`.
+- **lanestyle** installed (this repo): `pip install -e .` — deps `roadstyle>=0.11`, `geopandas`, `duckdb`.
 - An OSM extract (`.osm.pbf`) for your area (e.g. from Geofabrik), or an existing duckOSM db.
 
 Paths below assume the standard workspace layout (`duckOSM/` and `lanestyle/` as siblings).

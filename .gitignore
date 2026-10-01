@@ -1,5 +1,6 @@
 *.egg-info/
 *.geojson
+!docs/data/*.geojson
 *.html
 *.pyc
 .venv/
@@ -8,4 +9,6 @@
 __pycache__/
 build/
 dist/
+docs/maps/
 renders/
+site/

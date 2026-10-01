@@ -63,7 +63,15 @@ $PY -m pytest -q tests/test_lanestyle.py::test_from_gmns_lane_table_and_turns
 $PY render_lanes.py data/monaco_gmns.duckdb out.html --source-db data/monaco.duckdb
 $PY renders/lanes/build.py      # the Monaco test map -> renders/lanes/
 $PY renders/lanes/check_spot.py monaco LON LAT TAG 19.5 20.5   # screenshots of a reported spot
+$PY docs/build_maps.py                                  # the docs' live map (docs/maps/, not committed)
+$PY docs/build_images.py http://localhost:8090/lanes/monaco.html   # the docs' pictures (docs/img/*.jpg)
+$PY -m mkdocs build --strict                            # the docs site (mkdocs-material), as roadstyle/mapstyle
 ```
+
+The docs site (`mkdocs.yml`, `docs/`) mirrors roadstyle's and mapstyle's layout and is deployed to
+GitHub Pages by `.github/workflows/docs.yml` on pushes to master. `docs/data/` holds Monaco's lanes as
+GeoParquet (the no-duckOSM quickstart and the live map's input); rebuild it from `data/` when the
+GMNS export changes.
 
 The tests build a tiny GMNS db and source db in `tmp_path`, so they need no real data. Test data
 lives in `data/` (gitignored): `monaco.duckdb` and `monaco_gmns.duckdb`, rebuilt with

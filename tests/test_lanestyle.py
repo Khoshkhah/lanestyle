@@ -3,6 +3,7 @@ import json
 import sys
 
 import duckdb
+import pandas as pd
 
 import lanestyle as ls
 
@@ -47,7 +48,7 @@ def test_from_gmns_lane_table_and_turns(tmp_path):
     lanes, turns = ls.from_gmns(gmns, source_db=src)
     r = lanes.set_index("lane_id")
     assert r.loc["1_1", "highway"] == "secondary" and r.loc["1_2", "use"] == "bus"
-    assert r.loc["1_1", "name"] == "Main St" and r.loc["1_2", "name"] != r.loc["1_2", "name"]   # NaN: lane 1 only
+    assert r.loc["1_1", "name"] == "Main St" and pd.isna(r.loc["1_2", "name"])        # lane 1 only
     assert r.loc["1_1", "link_id"] == 8121729169906061189                           # exact, not float
     assert r.loc["2_1", "bridge"] == "yes" and r.loc["2_1", "layer"] == "1"         # from source_db
     got = set(map(tuple, turns[["from_lane", "to_lane", "type"]].values))

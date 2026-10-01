@@ -1,99 +1,163 @@
-# lanestyle
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/logo.svg" alt="lanestyle logo" width="96">
+</p>
 
-Lane-level maps on [roadstyle](https://github.com/Khoshkhah/roadstyle): every lane is one roadstyle
-line on its own geometry, drawn **exactly its width in metres** from zoom 16 on. roadstyle brings
-the rest: draw order from the OSM `layer` tag, bridges, tunnels, base maps, the filter box, popups,
-arrows and its `rs*` JavaScript API. lanestyle is to lanes what mapstyle is to the full base map.
+<h1 align="center">lanestyle</h1>
 
-Lanes are separated by painted-style **lane lines** (dashed dividers, centre lines, solid edges),
-which stop at junctions. Click a lane: it turns **red**, the lanes it leads into **green**, U-turns
-**purple**. Bus lanes (muted blue, as in duckOSM's maps) and bike lanes are painted over the palette,
-with their colours as rows in the Roads box.
+<p align="center">
+  <b>Lane-level road maps from Python.</b><br>
+  Every lane drawn at its real width, with painted lane lines, turns, and a click that shows where a lane leads. One offline HTML file.
+</p>
 
-With duckOSM's `lane_connector` table (a curve per lane pair through a junction or where a lane
-shifts sideways), `from_gmns` returns the connectors as rows too (`connector` True): they're drawn
-like lanes, without arrows, lane lines or labels, and a click colours them with the lanes they lead
-into. Lanes keep round ends everywhere, tunnels included (roadstyle ends its tunnel layers flat), so two
-pieces meeting at an angle leave no wedge.
+<p align="center">
+  <a href="https://pypi.org/project/lanestyle/"><img src="https://img.shields.io/pypi/v/lanestyle.svg" alt="PyPI"></a>
+  <a href="https://github.com/Khoshkhah/lanestyle/actions/workflows/test.yml"><img src="https://github.com/Khoshkhah/lanestyle/actions/workflows/test.yml/badge.svg?branch=master" alt="Tests"></a>
+  <a href="https://khoshkhah.github.io/lanestyle/"><img src="https://img.shields.io/badge/docs-khoshkhah.github.io%2Flanestyle-3f51b5.svg" alt="Docs"></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-3776AB.svg" alt="Python 3.10+">
+  <a href="https://github.com/Khoshkhah/lanestyle/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
-**New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the full pipeline, from a raw `.osm.pbf`
-through duckOSM to this map.
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#gallery">Gallery</a> ·
+  <a href="#what-goes-in">What goes in</a> ·
+  <a href="https://khoshkhah.github.io/lanestyle/">Documentation</a>
+</p>
 
-```python
-import lanestyle as ls
+![A lanestyle map of Monaco: Boulevard des Moulins with its bus lane in blue, dashed dividers, turn labels on every lane and a roundabout](https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/hero.jpg)
 
-# the reader: a duckOSM GMNS db (+ the duckOSM db it came from, for bridges / tunnels / layers)
-lanes, turns = ls.from_gmns("data/monaco_gmns.duckdb", source_db="data/monaco.duckdb")
-# the engine: any lane table works, not only GMNS
-ls.render_lanes(lanes, turns=turns, palette="mono").save("lanes.html")
+## Why lanestyle
+
+- **Lanes, not roads.** Each lane is its own line, exactly its width in metres from zoom 16 on
+  (3.25 m where OSM says nothing), so neighbours sit side by side with no gap and no overlap.
+- **Painted lane lines.** Dashed dividers between lanes of one direction, a solid centre line
+  between the two directions, grey edges: drawn to scale, cut at junctions, styled per type.
+- **Turns you can see.** Click a lane: it turns red, the lanes it leads into green, U-turns purple.
+  Every lane carries its turn label (`left + thru`, `right`, `fork`, `merge`, `end`).
+- **Built on [roadstyle](https://github.com/Khoshkhah/roadstyle).** Bridges over, tunnels under
+  (from the OSM `layer` tag), base maps, the filter box, popups, arrows and the `rs*` JavaScript API
+  come with it. lanestyle is to lanes what [mapstyle](https://github.com/Khoshkhah/mapstyle) is to the
+  full base map.
+- **From OpenStreetMap.** [duckOSM](https://github.com/Khoshkhah/duckOSM) places the lanes and works
+  out the lane-to-lane turns as a GMNS database; `from_gmns` reads it. Any other lane table draws too.
+- **One offline file.** Map, data and styling in a single HTML page: open it, serve it, embed it.
+
+## Install
+
+```bash
+pip install lanestyle
 ```
 
-## Input: a lane table, the roadstyle way
+Python ≥ 3.10. Brings roadstyle ≥ 0.11 (line widths in metres), geopandas, shapely 2, duckdb and pandas.
 
-`lanes` is a GeoDataFrame, one row per lane, each line in the direction of travel:
+## Quickstart
 
-| Column | Needed? | Meaning |
-|---|---|---|
-| `lane_id`, `geometry`, `highway` | yes | unique id, the lane's centre line, road class |
-| `width_m` | no, 3.25 | lane width in metres |
-| `use` | no, `auto` | `auto`, `bus` or `bike` |
-| `bridge`, `tunnel`, `layer` | no | the lane's level, read as roadstyle reads them |
-| `name` | no | street-name label (`from_gmns` sets it on lane 1 only) |
-| `link_id`, `lane_num`, `turn`, `lanes`, `osm_id`, `from_node_id`, `to_node_id`, `reverse_link_id` | no | shown in the popup (`from_gmns` sets them; the node ids and `reverse_link_id` also drive the lane lines) |
+**No data needed.** Monaco's lanes ship with the repo as GeoParquet
+([`docs/data/`](docs/data), 1 MB):
 
-`turns` (optional) has `from_lane`, `to_lane` and an optional `type` (`uturn` is purple); the popup
-then also shows how many lanes lead into and out of the clicked lane (`turns_in`, `turns_out`), and
-each lane gets a **type label** (`lane_type`, along the lane from zoom 18 and in the popup): the turns
-that leave it (`left + thru`, `right`, `U-turn`, `fork`, `merge`), or `end` where none does, the use
-first for a bus or bike lane (`bus · thru`). `"type_label_zoom": null` in the settings turns the labels off. Other
-`render_lanes` keywords go to `roadstyle.render_edges`, for example the area's dashed outline,
-`boundary=ls.read_boundary(duckosm_db)` (or `ls.boundary_from_geojson(path)`), or a route as an overlay:
-`overlays=[rs.Overlay(route_gdf)]`.
+```python
+import geopandas as gpd, pandas as pd
+import lanestyle as ls
+
+lanes = gpd.read_parquet("docs/data/monaco_lanes.parquet")
+turns = pd.read_parquet("docs/data/monaco_turns.parquet")
+ls.render_lanes(lanes, turns=turns).save("monaco.html")     # open it: no server needed
+```
+
+**Your own area**, with duckOSM (`pip install "duckosm @ git+https://github.com/Khoshkhah/duckOSM"`):
+
+```bash
+duckosm build --pbf monaco-latest.osm.pbf -o monaco.duckdb -m driving
+duckosm gmns monaco.duckdb -m driving -o monaco_gmns.duckdb
+```
+
+```python
+lanes, turns = ls.from_gmns("monaco_gmns.duckdb", source_db="monaco.duckdb")   # + levels, boundary
+ls.render_lanes(lanes, turns=turns, boundary=ls.read_boundary("monaco.duckdb")).save("monaco.html")
+```
+
+Or from the shell: `python render_lanes.py monaco_gmns.duckdb monaco.html --source-db monaco.duckdb`.
+The whole chain from a raw `.osm.pbf`: [From OSM to lanes](https://khoshkhah.github.io/lanestyle/pipeline/).
+
+**More looks:** every roadstyle keyword passes through.
+
+```python
+ls.render_lanes(lanes, turns=turns, basemap="dark_matter")                              # dark
+ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d35400"}}})  # your colours
+ls.render_lanes(lanes, settings={"lanes": {"lines": False, "type_label_zoom": None}})     # plain lanes
+ls.render_lanes(lanes, turns=turns, overlays=[rs.Overlay(route_gdf, label="route")])     # a lane route on top
+```
+
+## Gallery
+
+<table>
+<tr>
+<td width="33%" valign="top"><a href="https://khoshkhah.github.io/lanestyle/gallery/"><img src="https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/gallery/lane_lines.jpg" alt="Lane lines" width="100%"></a><br><b>Lane lines</b><br><sub>dividers, centre line, edges, to scale</sub></td>
+<td width="33%" valign="top"><a href="https://khoshkhah.github.io/lanestyle/gallery/"><img src="https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/gallery/roundabout.jpg" alt="A roundabout" width="100%"></a><br><b>A roundabout</b><br><sub>one ring, one road</sub></td>
+<td width="33%" valign="top"><a href="https://khoshkhah.github.io/lanestyle/gallery/"><img src="https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/gallery/tunnel.jpg" alt="A tunnel" width="100%"></a><br><b>A tunnel</b><br><sub>under the street, from the <code>layer</code> tag</sub></td>
+</tr>
+<tr>
+<td width="33%" valign="top"><a href="https://khoshkhah.github.io/lanestyle/gallery/"><img src="https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/gallery/bus_lane.jpg" alt="Bus lanes" width="100%"></a><br><b>Bus lanes</b><br><sub>painted over the palette, a row in the Roads box</sub></td>
+<td width="33%" valign="top"><a href="https://khoshkhah.github.io/lanestyle/gallery/"><img src="https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/gallery/click.jpg" alt="Click a lane" width="100%"></a><br><b>Click a lane</b><br><sub>red, into green, U-turns purple</sub></td>
+<td width="33%" valign="top"><a href="https://khoshkhah.github.io/lanestyle/gallery/"><img src="https://raw.githubusercontent.com/Khoshkhah/lanestyle/master/docs/img/gallery/overview.jpg" alt="Zoomed out" width="100%"></a><br><b>Zoomed out</b><br><sub>roadstyle's class widths below zoom 16</sub></td>
+</tr>
+</table>
+
+Every look with its code: **[the gallery](https://khoshkhah.github.io/lanestyle/gallery/)**.
+
+## What goes in
+
+`lanes` is a GeoDataFrame, one row per lane, each line in the direction of travel. Three columns
+are required; the others switch features on:
+
+| Column | Powers |
+|---|---|
+| `lane_id`, `geometry`, `highway` | the lane: unique id, centre line, road class (colour, filter box) |
+| `width_m` | its width in metres (3.25 where null) |
+| `use` | `auto`, `bus` or `bike`: bus and bike lanes are painted over the palette |
+| `bridge` / `tunnel` / `layer` | grade separation, read as roadstyle reads them |
+| `name` | the street label (set it on one lane per road) |
+| `link_id`, `lane_num` (+ `reverse_link_id`, `from_node_id`, `to_node_id`) | the lane lines: which lanes share a road, which road is the other direction, where junctions are |
+| `connector`, `from_lane`, `to_lane` | lane connectors: the curves through a junction, drawn like lanes |
+| anything else | shown in the popup |
+
+`turns` (optional) has `from_lane`, `to_lane` and a `type` (`thru`, `left`, `right`, `uturn`,
+`diverge`, `merge`): the click colours, the lane type labels, and `turns_in` / `turns_out` in the
+popup. Lane 1 is the leftmost lane (right-hand traffic). Details:
+[The lane table](https://khoshkhah.github.io/lanestyle/guides/lane-table/).
 
 ## Settings
 
-roadstyle's own settings apply (`roadstyle.json`, or `settings=`). lanestyle's defaults are in
-[`src/lanestyle/data/lanestyle.json`](src/lanestyle/data/lanestyle.json): lane colours, click
-colours, the lane lines, `junction_trim_m`, `type_label_zoom`, `default_width_m`, `casing_m`, `width_m_zoom`. Override
-them the roadstyle way, stating only what changes: a `lanestyle.json` in the current folder, or a
-`"lanes"` key in `settings=`:
+roadstyle's settings apply as they are; lanestyle adds a `lanes` key
+([defaults](src/lanestyle/data/lanestyle.json)): the lane and click colours, the three lane line
+types (`color`, `width_m`, `dash_m`), `junction_trim_m`, `type_label_zoom`, `default_width_m`,
+`width_m_zoom`. Override them the roadstyle way, a `lanestyle.json` in the current folder or
+`settings={"lanes": {...}}`, stating only what changes.
 
-```python
-ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d35400"}}})
-```
+## Drive it from JavaScript
 
-**Lane lines** are their own layer on top of the lanes, each type styled on its own
-(`dash_m: null` = solid; `"lines": false` turns them off):
+A lanestyle page is a roadstyle page, so the whole `window.rs*` API is there, with the lane table's
+columns as properties:
 
-| Type | Where | Default |
-|---|---|---|
-| `divider` | between lanes of one direction | off-white `#e8e8e8`, 0.15 m, dashed 3 m / 9 m |
-| `centre` | between the two directions of a two-way road (also one mapped as two one-way ways) | off-white `#e8e8e8`, 0.15 m, solid |
-| `edge` | the road's outer edges | grey, 0.10 m, solid |
-
-`"fillet_m": 1.5` (off by default) also paves every gap narrower than 3 m between lane surfaces
-(corners at junctions, slivers where two carriageways diverge) in the nearest lane's colour; it adds
-about 18 s to a Monaco build for a small gain, now that lane ends are round in tunnels too.
-
-They are drawn to scale but never thinner than `line_min_device_px` (1.5) physical pixels of the screen,
-fading in over two zoom levels from `width_m_zoom`. They stop `junction_trim_m` (1 m) short of the
-other roads' surface at a junction, and need
-`link_id` / `lane_num` in the lane table (plus `reverse_link_id` and `from_node_id` / `to_node_id`,
-which `from_gmns` adds, for centre lines and junctions). Right-hand traffic only for now.
-
-## Install / run
-
-Needs roadstyle 0.11 or newer (line widths in metres), geopandas and duckdb.
-
-```bash
-pip install -e .
-python render_lanes.py data/monaco_gmns.duckdb lanes.html --source-db data/monaco.duckdb
-python serve.py 8080           # written next to the map; prints the URL
+```js
+const bus = rsQuery(p => p.use === "bus");  rsColor(bus, "#ff8800");  rsFocus(bus);
+rsSelect(rsQuery(p => p.lane_id === "8121729169906061189_2")[0]);     // click a lane by id
 ```
 
 ## Fidelity
 
-Lanes are duckOSM's drive-side offset centre lines. Their **width is 3.25 m** wherever OSM lacks
-`width:lanes`, which today is every lane. Lane-to-lane turns come from GMNS `movement`: where
-`turn:lanes` is untagged, every lane of a road leads into every lane of the next. A lane-level
+Lane geometry is duckOSM's drive-side offset centre line, one continuous curve along a road.
+Widths are the 3.25 m default wherever OSM lacks `width:lanes`, which today is nearly everywhere.
+Lane-to-lane turns follow `turn:lanes` where tagged and osm2gmns's defaults elsewhere. A lane-level
 *map*, not a survey-grade HD map.
+
+## Documentation
+
+**[khoshkhah.github.io/lanestyle](https://khoshkhah.github.io/lanestyle/)**: get started, guides
+(the lane table, lane lines, turns and clicks, the duckOSM pipeline, websites), the gallery, the
+Python API, settings, the command line, and the design notes.
+
+## License
+
+MIT.
