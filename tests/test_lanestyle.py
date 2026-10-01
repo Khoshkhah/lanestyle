@@ -94,9 +94,10 @@ def test_lane_lines_types(tmp_path):
 
 
 def test_lane_lines_stop_short_of_a_junction():
-    """Three roads meet at node 0 (link 1 from the south, 2 north, 3 east): link 1's lines stop
-    junction_trim_m (1 m) short of the other roads' surface, so its east edge, which runs into
-    link 3 (3.25 m wide), is cut 1.625 + 1 m short, its west edge 1 m (link 2 starts at the node)."""
+    """Three roads meet at node 0 (link 1 from the south, 2 north, 3 east): link 1's east edge runs
+    into link 3's surface (3.25 m wide) and stops junction_trim_m (1 m) short of it: cut 1.625 + 1 m.
+    Link 2 goes straight on from link 1 (its lane starts where link 1's ends, same heading), so it
+    is the same road and never cuts link 1's lines: the west edge keeps its full 100 m."""
     import geopandas as gpd
     from shapely.geometry import LineString
     from lanestyle.lines import lane_lines
@@ -110,7 +111,7 @@ def test_lane_lines_stop_short_of_a_junction():
     fc = lane_lines(lanes, ls.lane_settings({"lanes": {"lines": {"edge": {"dash_m": None}}}}))
     g = gpd.GeoDataFrame.from_features(fc["features"], crs=4326)
     one = sorted(g.to_crs(lanes.estimate_utm_crs()).length[:2])   # link 1's two edge lines, 100 m
-    assert abs(one[0] - 97.375) < 0.3 and abs(one[1] - 99.0) < 0.3
+    assert abs(one[0] - 97.375) < 0.3 and abs(one[1] - 100.0) < 0.3
 
 
 def test_lines_off_and_without_link_columns(tmp_path):

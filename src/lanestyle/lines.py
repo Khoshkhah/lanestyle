@@ -67,7 +67,22 @@ def _paired(g):
 
 
 def _dir(line):
+    """The line's overall direction (start to end), a unit vector."""
     (x0, y0), (x1, y1) = line.coords[0], line.coords[-1]
+    n = math.hypot(x1 - x0, y1 - y0) or 1.0
+    return (x1 - x0) / n, (y1 - y0) / n
+
+
+def _start_dir(line):
+    """The line's start direction (its first segment), a unit vector."""
+    (x0, y0), (x1, y1) = line.coords[0], line.coords[1]
+    n = math.hypot(x1 - x0, y1 - y0) or 1.0
+    return (x1 - x0) / n, (y1 - y0) / n
+
+
+def _end_dir(line):
+    """The line's end direction (its last segment), a unit vector."""
+    (x0, y0), (x1, y1) = line.coords[-2], line.coords[-1]
     n = math.hypot(x1 - x0, y1 - y0) or 1.0
     return (x1 - x0) / n, (y1 - y0) / n
 
@@ -114,11 +129,30 @@ def lane_lines(lanes, s):
         polys = g.geometry.buffer(g["width_m"] / 2, cap_style="flat")
         surface = {lk: shapely.union_all(p.to_numpy()) for lk, p in polys.groupby(g["link_id"].to_numpy())}
 
+    # a link whose lanes go on into another link's lanes (lane k's end on lane k's start within
+    # 0.3 m, heading on within 45 degrees: duckOSM places a road's pieces as one run) is the same
+    # road: it never cuts those lines. The heading matters: a one-lane one-way road has its lane on
+    # its own line, so at a T-junction the side road's lane starts exactly where the road's ends.
+    goes_on = defaultdict(set)
+    if {"from_node_id", "to_node_id"} <= set(g.columns):
+        starts = [(r.link_id, r.lane_num, shapely.Point(r.geometry.coords[0]), _start_dir(r.geometry))
+                  for r in g.itertuples(index=False)]
+        tree = shapely.STRtree([p for _, _, p, _ in starts])
+        for r in g.itertuples(index=False):
+            end, (ex, ey) = shapely.Point(r.geometry.coords[-1]), _end_dir(r.geometry)
+            for j in tree.query(end.buffer(0.3)):
+                lk, num, p, (sx, sy) = starts[j]
+                if lk != r.link_id and num == r.lane_num and p.distance(end) <= 0.3 and ex * sx + ey * sy > 0.707:
+                    goes_on[r.link_id].add(lk)
+                    goes_on[lk].add(r.link_id)
+
     def cut(node, link, mates):
         """The other links' surface at a node (grown by the trim at a junction): where lines stop.
-        ``mates``: the link's reverse and paired carriageway, whose surface it shares an edge with."""
+        ``mates``: the link's reverse and paired carriageway, whose surface it shares an edge with,
+        and the links its lanes go on into (one road)."""
         if node not in at:
             return None
+        mates = set(mates) | goes_on.get(link, set())
         if (node, link) not in cuts:
             other = [surface[k] for k in at[node] if k != link and k not in mates]
             u = shapely.union_all(other) if other else None
