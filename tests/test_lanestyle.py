@@ -233,4 +233,4 @@ def test_lane_connectors_drawn_and_coloured(tmp_path):
     assert p["1_1>2_1"]["connects"] == "lane 1 of Main St → lane 1 of Bridge Rd"
     t = json.loads(html.split("const T = ", 1)[1].split(", C = ", 1)[0])
     assert "1_1>2_1" in t["1_1"][0]
-    assert '"line-cap", "butt"' in html                         # lanes end flat once connectors join them
+    assert 'l.id.startsWith("roads-tunnel")' in html           # tunnel lanes end flat, the rest round

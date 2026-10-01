@@ -135,13 +135,15 @@ _LABELS_JS = """<script>
 """
 
 
-# with lane connectors the lanes join up, so they end flat: a round end bulges past a lane's end and,
-# in a (translucent) tunnel, overlapping round ends show as discs
+# round lane ends make joins smooth (a lane meeting the next at an angle), so they stay - except in
+# tunnels: tunnel lanes are see-through, and where lanes and connectors overlap their round ends
+# show as darker discs, so the tunnel layers end flat (connectors join the lanes there)
 _FLAT_ENDS_JS = """<script>
 (function(){
   function flat(){
     for (const l of map.getStyle().layers)
-      if (l.type === "line" && l.source === "roads" && map.getLayoutProperty(l.id, "line-cap") === "round")
+      if (l.type === "line" && l.source === "roads" && l.id.startsWith("roads-tunnel")
+          && map.getLayoutProperty(l.id, "line-cap") === "round")
         map.setLayoutProperty(l.id, "line-cap", "butt");
   }
   if (map.isStyleLoaded()) flat(); else map.once("load", flat);

@@ -11,8 +11,9 @@ which stop at junctions. Click a lane: it turns **red**, the lanes it leads into
 
 With duckOSM's `lane_connector` table (a curve per lane pair through a junction or where a lane
 shifts sideways), `from_gmns` returns the connectors as rows too (`connector` True): they're drawn
-like lanes, without arrows, lane lines or labels, a click colours them with the lanes they lead into,
-and lanes then end flat.
+like lanes, without arrows, lane lines or labels, and a click colours them with the lanes they lead
+into. Lanes keep round ends, so joins stay smooth, except in tunnels, where see-through lanes would show
+overlapping round ends as discs.
 
 **New here?** [`docs/pipeline.md`](docs/pipeline.md) walks the full pipeline, from a raw `.osm.pbf`
 through duckOSM to this map.
