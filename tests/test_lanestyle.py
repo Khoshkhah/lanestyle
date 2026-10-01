@@ -122,3 +122,45 @@ def test_lines_off_and_without_link_columns(tmp_path):
     assert lane_lines(lanes.drop(columns=["lane_num"]).assign(width_m=3.25), ls.lane_settings()) is None
     page = ls.render_lanes(lanes, turns=turns).html
     assert "reverse_link_id" not in page.split("const style = ", 1)[1].split("</script>", 1)[0]
+
+
+def test_lines_at_a_sharp_bend_meet_instead_of_crossing():
+    """Two one-way links continue each other at node 0 with a 150° turn (not a junction): neither
+    link's lines may run into the other's surface (they crossed in an X, Monaco 662188420997239233)."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from lanestyle.lines import lane_lines
+
+    d = 30 / 111_320
+    lanes = gpd.GeoDataFrame(
+        {"link_id": [1, 2], "lane_num": [1, 1], "width_m": [3.25] * 2, "from_node_id": [1, 0], "to_node_id": [0, 2]},
+        geometry=[LineString([(7.42, 43.73 - d), (7.42, 43.73)]),
+                  LineString([(7.42, 43.73), (7.42 + 0.7 * d, 43.73 - 0.9 * d)])], crs=4326)
+    fc = lane_lines(lanes, ls.lane_settings())
+    crs = lanes.estimate_utm_crs()
+    g = gpd.GeoDataFrame.from_features(fc["features"], crs=4326).to_crs(crs)
+    surf = lanes.to_crs(crs).buffer(1.625, cap_style="flat")
+    assert g.geometry[:2].intersection(surf[1].buffer(-0.01)).length.max() < 0.01   # link 1's lines
+    assert g.geometry[2:].intersection(surf[0].buffer(-0.01)).length.max() < 0.01   # link 2's lines
+
+
+def test_loop_halves_are_not_a_two_way_pair(tmp_path):
+    """A one-way loop split in two (A->B, B->A, different geometry, Monaco way 120113154) is not a
+    reverse pair: no reverse_link_id, so no centre line, and roadstyle doesn't pair them either."""
+    gmns = tmp_path / "loop.duckdb"
+    con = duckdb.connect(str(gmns))
+    con.execute("INSTALL spatial; LOAD spatial; CREATE SCHEMA gmns_driving")
+    con.execute("CREATE TABLE gmns_driving.link(link_id BIGINT, name VARCHAR, facility_type VARCHAR, "
+                "from_node_id BIGINT, to_node_id BIGINT, geom GEOMETRY)")
+    con.execute("CREATE TABLE gmns_driving.lane(lane_id VARCHAR, link_id BIGINT, lane_num BIGINT, "
+                "allowed_uses VARCHAR, width DOUBLE, turn VARCHAR, geom GEOMETRY)")
+    north = "ST_GeomFromText('LINESTRING(7.418 43.738, 7.4185 43.7384, 7.419 43.738)')"
+    south = "ST_GeomFromText('LINESTRING(7.419 43.738, 7.4185 43.7376, 7.418 43.738)')"
+    con.execute(f"INSERT INTO gmns_driving.link VALUES (1,NULL,'service',10,11,{north}),(2,NULL,'service',11,10,{south})")
+    con.execute(f"INSERT INTO gmns_driving.lane VALUES ('1_1',1,1,'auto',NULL,NULL,{north}),('2_1',2,1,'auto',NULL,NULL,{south})")
+    con.close()
+    lanes, _ = ls.from_gmns(gmns)
+    assert lanes["reverse_link_id"].isna().all()
+    html = ls.render_lanes(lanes).html
+    feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
+    assert not any(f["properties"].get("__rs_twoway") for f in feats)

@@ -84,6 +84,33 @@ def _compact(fc):
             "k": [f["properties"]["k"] for f in fs], "c": [f["geometry"]["coordinates"] for f in fs]}
 
 
+# roadstyle's tunnel look is a faded fill over a dashed casing; with metre widths and no casing the
+# dashes cover the whole lane and show through as blocks, so lanes get a plain casing under the fade
+_ROADSTYLE = {"config": {"tunnel_gap_shade": 0, "tunnel_dash_shade": 0}}
+
+
+def _break_twins(g):
+    """roadstyle pairs two lines with swapped end points (to 6 decimals) as a two-way road's two
+    directions and shifts them apart. Lanes are never such a pair (each has its own geometry), but the
+    two halves of a one-way loop are: nudge one end of the later one by 2e-6 degrees (~0.2 m)."""
+    # ponytail: geometry nudge; roadstyle's `twoway_col` (in progress on its main) replaces it
+    from shapely.geometry import LineString
+
+    key = lambda c: (round(c[0], 6), round(c[1], 6))
+    seen, geoms = set(), list(g.geometry)
+    for i, ln in enumerate(geoms):
+        if ln is None or ln.geom_type != "LineString":
+            continue
+        cs = list(ln.coords)
+        a, z = key(cs[0]), key(cs[-1])
+        if (z, a) in seen:
+            cs[-1] = (cs[-1][0] + 2e-6, cs[-1][1] + 2e-6)
+            geoms[i] = LineString(cs)
+            z = key(cs[-1])
+        seen.add((a, z))
+    return g.set_geometry(geoms, crs=g.crs)
+
+
 def _merge(a, b):
     """``a`` updated by ``b``, nested dicts merged (state only what changes)."""
     out = dict(a)
@@ -127,11 +154,11 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
                     color_active="Lane use")
     lines = lane_lines(g, s)
     m = rs.render_edges(
-        g.drop(columns=[c for c in _HELPERS if c in g.columns]), palette=palette,
+        _break_twins(g.drop(columns=[c for c in _HELPERS if c in g.columns])), palette=palette,
         width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=s["casing_m"],
         road_popup=[c for c in _POPUP if c in g.columns],
         **{"select_color": s["colors"]["clicked"], **kwargs},   # roadstyle's own selection glow
-        settings={k: v for k, v in (settings or {}).items() if k != "lanes"} or None,
+        settings=_merge(_ROADSTYLE, {k: v for k, v in (settings or {}).items() if k != "lanes"}),
         **opts)
     js = ""
     if lines:

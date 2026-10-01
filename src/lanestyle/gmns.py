@@ -16,7 +16,8 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
     with ``lane_id``, ``highway`` (the link's ``facility_type``), ``width_m`` (``lane.width``; null
     where untagged, render_lanes fills the default), ``use``, ``name`` (lane 1 only: one label per
     road), ``link_id``, ``lane_num``, ``turn``, ``from_node_id`` / ``to_node_id`` and
-    ``reverse_link_id`` (the link between the same nodes the other way; null on a one-way road),
+    ``reverse_link_id`` (the same road the other way: same nodes swapped and the same geometry, so
+    the two halves of a one-way loop are not a pair; null on a one-way road),
     for the lane lines, and, when known, ``bridge`` / ``tunnel`` / ``layer``.
 
     Levels come from the GMNS ``link`` if it has those columns, else from ``source_db`` (the
@@ -27,6 +28,8 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
     drawn in its own colour), from ``movement``: each lane of the inbound link in
     ``start_ib_lane``..``end_ib_lane`` to each lane of the outbound link in
     ``start_ob_lane``..``end_ob_lane`` (NULL = every lane). Empty without a movement table."""
+    import uuid
+
     import duckdb
     import geopandas as gpd
     import pandas as pd
@@ -37,22 +40,24 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
         con.execute("INSTALL spatial; LOAD spatial;")
         if not _cols(con, g, "lane"):
             raise ValueError(f"no '{g}.lane' in {gmns_db}: build a GMNS db first (duckOSM `duckosm gmns`)")
-        lvl = ""
+        same = " AND ST_Equals(r.geom, k.geom)" if "geom" in _cols(con, g, "link") else ""
+        lvl, src = "", f"lanestyle_src_{uuid.uuid4().hex[:8]}"   # one db instance per file per process:
+        # a caller's own connection to gmns_db may already hold an attachment, so never reuse a name
         if {"bridge", "tunnel", "layer"} <= _cols(con, g, "link"):
             lvl = ", k.bridge, k.tunnel, k.layer"
         elif source_db:
-            con.execute(f"ATTACH '{str(source_db).replace(chr(39), chr(39) * 2)}' AS s (READ_ONLY)")
-            if not {"edge_id", "bridge", "tunnel", "layer"} <= _cols(con, mode, "edges", db="s"):
+            con.execute(f"ATTACH '{str(source_db).replace(chr(39), chr(39) * 2)}' AS {src} (READ_ONLY)")
+            if not {"edge_id", "bridge", "tunnel", "layer"} <= _cols(con, mode, "edges", db=src):
                 raise ValueError(f"no {mode}.edges with bridge / tunnel / layer in {source_db}")
             lvl = ", e.bridge, e.tunnel, e.layer"
-        join = f"LEFT JOIN s.{mode}.edges e ON e.edge_id = l.link_id" if lvl.startswith(", e.") else ""
+        join = f"LEFT JOIN {src}.{mode}.edges e ON e.edge_id = l.link_id" if lvl.startswith(", e.") else ""
         df = con.execute(
             f"SELECT l.lane_id::VARCHAR AS lane_id, k.facility_type AS highway, l.width AS width_m, "
             f"  COALESCE(l.allowed_uses, 'auto') AS use, "
             f"  CASE WHEN l.lane_num = 1 THEN k.name END AS name, "
             f"  l.link_id, l.lane_num, l.turn, k.from_node_id, k.to_node_id, "
             f"  (SELECT min(r.link_id) FROM {g}.link r WHERE r.from_node_id = k.to_node_id "
-            f"     AND r.to_node_id = k.from_node_id AND r.link_id <> k.link_id) AS reverse_link_id"
+            f"     AND r.to_node_id = k.from_node_id AND r.link_id <> k.link_id{same}) AS reverse_link_id"
             f"  {lvl}, ST_AsWKB(l.geom) AS geom "
             f"FROM {g}.lane l JOIN {g}.link k ON k.link_id = l.link_id {join} "
             f"WHERE l.geom IS NOT NULL ORDER BY l.link_id, l.lane_num").df()
@@ -67,6 +72,8 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
                 f"  ol.lane_num BETWEEN m.start_ob_lane AND COALESCE(m.end_ob_lane, m.start_ob_lane)) "
                 f"ORDER BY 1, 2").df()
     finally:
+        if lvl.startswith(", e."):
+            con.execute(f"DETACH {src}")
         con.close()
     for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id"):
         df[c] = df[c].astype("Int64")                       # BIGINT hash ids: never float64

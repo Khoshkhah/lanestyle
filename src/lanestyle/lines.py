@@ -41,9 +41,10 @@ def lane_lines(lanes, s):
     In a link, lane 1 is the leftmost lane in the direction of travel and the lane numbers grow to
     the right (duckOSM, right-hand traffic): lane k's right edge is the divider to lane k+1, the
     last lane's the road's edge, lane 1's left edge the centre line (two-way: a ``reverse_link_id``,
-    drawn once, by the smaller link id) or the edge (one-way). Where its link meets a junction (a
-    node with 3 or more neighbours), a line stops at the surface of the other roads there (every
-    link at that node but its own and its reverse), ``junction_trim_m`` short of it."""
+    drawn once, by the smaller link id) or the edge (one-way). At each end node a line stops where it
+    enters the surface of the other links there (every link at that node but its own and its
+    reverse): at a junction (3 or more neighbours) ``junction_trim_m`` short of it, elsewhere right
+    at it, so the inner edges of a sharp bend meet instead of crossing."""
     # ponytail: right-hand traffic only (every area so far); left-hand needs duckOSM's lane order there
     from collections import defaultdict
 
@@ -57,7 +58,7 @@ def lane_lines(lanes, s):
     lat = lanes.geometry.representative_point().y.to_numpy()
     last = g.groupby("link_id")["lane_num"].transform("max").to_numpy()
     trim = float(s.get("junction_trim_m") or 0)
-    at, surface, cuts = defaultdict(set), {}, {}      # junction -> its links; link -> its lanes' surface
+    at, surface, cuts = defaultdict(set), {}, {}      # node -> its links; link -> its lanes' surface
     if {"from_node_id", "to_node_id"} <= set(g.columns):
         nb = defaultdict(set)
         for lk, a, b in set(zip(g["link_id"], g["from_node_id"], g["to_node_id"])):
@@ -65,17 +66,18 @@ def lane_lines(lanes, s):
             nb[b].add(a)
             at[a].add(lk)
             at[b].add(lk)
-        at = {n: v for n, v in at.items() if len(nb[n]) >= 3}
+        junction = {n for n in at if len(nb[n]) >= 3}
         polys = g.geometry.buffer(g["width_m"] / 2, cap_style="flat")
         surface = {lk: shapely.union_all(p.to_numpy()) for lk, p in polys.groupby(g["link_id"].to_numpy())}
 
     def cut(node, link, rev):
-        """The other roads' surface at a junction, grown by the trim: where this link's lines stop."""
+        """The other links' surface at a node (grown by the trim at a junction): where lines stop."""
         if node not in at:
             return None
         if (node, link) not in cuts:
             other = [surface[k] for k in at[node] if k != link and not (rev is not None and k == rev)]
-            cuts[node, link] = shapely.union_all(other).buffer(trim) if other else None
+            u = shapely.union_all(other) if other else None
+            cuts[node, link] = u.buffer(trim) if u is not None and trim and node in junction else u
         return cuts[node, link]
     out = []
     for i, r in enumerate(g.itertuples(index=False)):
