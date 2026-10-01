@@ -7,7 +7,8 @@ arrows and its `rs*` JavaScript API. lanestyle is to lanes what mapstyle is to t
 
 Lanes are separated by painted-style **lane lines** (dashed dividers, centre lines, solid edges),
 which stop at junctions. Click a lane: it turns **red**, the lanes it leads into **green**, U-turns
-**purple**. Bus and bike lanes are painted over the palette (the *Lane use* colouring).
+**purple**. Bus lanes (muted blue, as in duckOSM's maps) and bike lanes are painted over the palette,
+with their colours as rows in the Roads box.
 
 With duckOSM's `lane_connector` table (a curve per lane pair through a junction or where a lane
 shifts sideways), `from_gmns` returns the connectors as rows too (`connector` True): they're drawn

@@ -152,6 +152,33 @@ _FLAT_ENDS_JS = """<script>
 """
 
 
+# bus / bike lanes are coloured with roadstyle's "colour by" (Road class + Lane use, the latter on),
+# but its dropdown and legend box are hidden: the colours get rows in the Roads filter box instead,
+# under the road classes, before Bridges / Tunnels
+_USE_ROWS_JS = """<style>.co-ctrl,.co-lg{display:none!important}</style>
+<script>
+(function(){
+  const ROWS = __ROWS__;
+  function add(){
+    const body = document.querySelector(".flt-ctrl .flt-body");
+    if (!body) return setTimeout(add, 200);
+    if (body.querySelector(".ls-use")) return;
+    const before = body.querySelector(".flt-grade");
+    ROWS.forEach(([label, color], i) => {
+      const lab = document.createElement("label"); lab.className = "ls-use";
+      if (i === 0) lab.style.cssText = "margin-top:4px;padding-top:4px;border-top:1px solid #ddd";
+      const pad = document.createElement("input"); pad.type = "checkbox"; pad.style.visibility = "hidden";
+      const sw = document.createElement("span"); sw.className = "flt-sw"; sw.style.background = color;
+      lab.appendChild(pad); lab.appendChild(sw); lab.appendChild(document.createTextNode(" " + label));
+      body.insertBefore(lab, before);
+    });
+  }
+  add();
+})();
+</script>
+"""
+
+
 def _lane_types(g, turns):
     """Each lane's type label: the turns that leave it (``left + thru``, ``U-turn``, ``fork``, ``merge``)
     or ``end`` where none does; a bus or bike lane says so first (``bus · thru``)."""
@@ -244,6 +271,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         settings=_merge(_ROADSTYLE, {k: v for k, v in (settings or {}).items() if k != "lanes"}),
         **opts)
     js = ""
+    if present:                                          # bus / bike colours as rows in the Roads box
+        js += _USE_ROWS_JS.replace("__ROWS__", json.dumps([[f"{u} lanes", c] for u, c in present.items()]))
     if lines:
         js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
                .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"])))

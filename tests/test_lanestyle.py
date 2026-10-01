@@ -61,7 +61,8 @@ def test_render_lanes_metre_widths_uses_and_click(tmp_path):
     lanes, turns = ls.from_gmns(gmns, source_db=src)
     html = ls.render_lanes(lanes, turns=turns).html
     assert '"__rs_wm"' in html                                    # widths in metres (roadstyle 0.10)
-    assert "Lane use" in html and "#c9783a" in html and "#3f8fc9" not in html   # bus only: no bike
+    assert "Lane use" in html and "#9db8d9" in html and "#3f8fc9" not in html   # bus only: no bike
+    assert '[["bus lanes", "#9db8d9"]]' in html and ".co-ctrl,.co-lg{display:none" in html   # a Roads-box row, no dropdown
     t = json.loads(html.split("const T = ", 1)[1].split(", C = ", 1)[0])
     assert t["1_1"] == [["2_1"], ["3_1"]] and t["1_2"] == [["2_1"], []]
 

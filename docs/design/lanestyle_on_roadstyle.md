@@ -103,7 +103,7 @@ Without it, clicking a lane only selects it.
   state only what changes):
 
     ```json
-    {"lanes": {"colors": {"bus": "#c9783a", "bike": "#3f8fc9", "clicked": "#e0453a", "turns_into": "#149a86"},
+    {"lanes": {"colors": {"bus": "#9db8d9", "bike": "#3f8fc9", "clicked": "#e0453a", "turns_into": "#149a86"},
                "default_width_m": 3.25, "casing_m": 0.15, "width_m_zoom": 16}}
     ```
 
