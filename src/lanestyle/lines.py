@@ -352,36 +352,41 @@ def lane_lines(lanes, s, avoid=None, frame=None, frame_edges=None):
                 line = parts[0] if len(parts) == 1 else shapely.MultiLineString(parts)
                 out.append((t, band, round(st["width_m"] * sec, 4), line))
     if conn is not None and len(conn) and styles.get("edge"):
-        # Casing for a driving connector, only where nothing else covers it: a frame is a link's outline, and the corner of a turn is in no
-        # link's frame (the links' own frames stop where the junction starts). An edge of the connector is kept only where it is not inside
-        # another lane or another connector (whose surface shares its side: no line between two connectors of one turn), 5 cm grown.
+        # Casing at a connector: the outline of the surface the map draws there. A connector joins lanes the page draws with round ends, so its own edge
+        # is not the outline (a lane's cap sticks out past it, and a neighbour's cap covers part of it). The outline is the boundary of the union of the
+        # level's lanes (round ends) and connectors, kept near a connector (its surface and the end caps of the lanes it joins), and open where a
+        # footway's surface meets it, as a road's edge line is (above).
         gc = conn.to_crs(g.crs)
-        road_ix = [i for i, r in enumerate(rows) if not walk[i] and not zebra[i]]
-        surf = [rows[i].geometry.buffer(rows[i].width_m / 2, cap_style="flat") for i in road_ix]
-        csurf = [r.geometry.buffer(r.width_m / 2, cap_style="flat") for r in gc.itertuples(index=False)]
-        allp = surf + csurf
-        ctree = shapely.STRtree(allp)
-        latc = gc.to_crs(4326).geometry.representative_point().y.to_numpy()
-        for ci, r in enumerate(gc.itertuples(index=False)):
+        cap = lambda r: r.geometry.buffer(r.width_m / 2, cap_style="round")          # noqa: E731
+        by_level = defaultdict(lambda: ([], [], []))                                 # level -> road + connector surfaces, footway surfaces, near-connector zone
+        by_id = {r.lane_id: r for r in rows}
+        for i, r in enumerate(rows):
+            if not zebra[i] and r.geometry is not None:
+                by_level[_group(r)][1 if walk[i] else 0].append(cap(r))
+        for r in gc.itertuples(index=False):
             if r.geometry is None or r.geometry.geom_type != "LineString" or r.geometry.length < 0.5:
                 continue
-            self_ix = len(surf) + ci
-            others = [allp[j] for j in ctree.query(csurf[ci]) if j != self_ix]
-            stop = shapely.union_all([p.buffer(0.05) for p in others]) if others else None
-            if above.get(_group(r)) is not None:
-                stop = above[_group(r)] if stop is None else stop.union(above[_group(r)])
-            band, sec = _band(r), 1 / math.cos(math.radians(latc[ci]))
-            t = "bridge_edge" if band == "bridge" and styles.get("bridge_edge") else "edge"
-            for off in (r.width_m / 2, -r.width_m / 2):
-                line = r.geometry.offset_curve(off, join_style="mitre", mitre_limit=2.0)
-                if line.is_empty:
-                    continue
-                if stop is not None:
-                    line = line.difference(stop)
-                line = shapely.line_merge(line) if line.geom_type == "MultiLineString" else line
-                parts = [q for q in getattr(line, "geoms", [line]) if q.geom_type == "LineString" and q.length >= 1.5]   # a piece under 1.5 m is a crumb at a corner
-                if parts:
-                    out.append((t, band, round(styles[t]["width_m"] * sec, 4), parts[0] if len(parts) == 1 else shapely.MultiLineString(parts)))
+            lv = by_level[_group(r)]
+            lv[0].append(cap(r))
+            zone = [cap(r)]
+            for ln, end in ((getattr(r, "from_lane", None), -1), (getattr(r, "to_lane", None), 0)):
+                if ln in by_id and by_id[ln].geometry is not None:
+                    zone.append(Point(by_id[ln].geometry.coords[end]).buffer(by_id[ln].width_m / 2))
+            lv[2].extend(zone)
+        for gp, (surfaces, foot, zone) in by_level.items():
+            if not zone:
+                continue
+            edge = shapely.union_all(surfaces).boundary.intersection(shapely.union_all(zone).buffer(0.1))
+            if foot:
+                edge = edge.difference(shapely.union_all(foot))
+            if above.get(gp) is not None:
+                edge = edge.difference(above[gp])
+            parts = [q for q in getattr(shapely.line_merge(edge) if edge.geom_type == "MultiLineString" else edge, "geoms", [edge])
+                     if q.geom_type == "LineString" and q.length >= 1.5]                # a piece under 1.5 m is a crumb at a corner
+            if parts:
+                t = "bridge_edge" if _real(gp) == "bridge" and styles.get("bridge_edge") else "edge"
+                out.append((t, _real(gp), round(styles[t]["width_m"] / math.cos(math.radians(float(lat.mean()))), 4),
+                            parts[0] if len(parts) == 1 else shapely.MultiLineString(parts)))
     if any(walk) and styles.get("edge"):
         # Walkers have no lanes: the footpaths of a level are one surface, its outline one line (not a pair of edges per
         # strip that cross each other at every junction), stopping where a road's surface begins

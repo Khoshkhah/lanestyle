@@ -613,3 +613,13 @@ def test_tunnels_on_different_layers_do_not_touch():
     assert alone > 0
     assert foot_edge_len(lane_lines(table("-2"), s)) == alone        # a road on another layer cuts nothing of it ...
     assert foot_edge_len(lane_lines(table("-1"), s)) < alone         # ... one on its own layer does (the footway's outline stops at the road)
+
+
+def test_a_road_connector_ranks_over_a_footway_and_a_walk_one_stays_below():
+    """A footway ending on a road must not show over the road's connector fill (Boulevard Rainier III, Monaco): a connector cars use
+    ranks just under its road class, above footway (1) and under the lanes of its class; a walking-only connector stays at the bottom."""
+    from lanestyle.render import _connector_order
+    assert _connector_order(False, "residential", "driving,walking", -300, -250) == 3.5 > 1      # over a footway (z 1), under residential lanes (4)
+    assert _connector_order(True, "residential", "driving", -300, -250) == 3.4
+    assert _connector_order(False, "residential", "walking", -300, -250) == -250                  # a footway's own connector
+    assert _connector_order(False, "residential", "", -30, -20) > 1                               # no mode data: a road's

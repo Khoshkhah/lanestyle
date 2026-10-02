@@ -206,6 +206,26 @@ def _demote_crossings(g, s):
             g.loc[i, "demoted"] = f"footway (OSM tags it a crossing; {on:.0%} of its {ln.length:.0f} m is on a road)"
 
 
+def _classes(g):
+    """Each lane's road class as roadstyle reads it (first of ``a;b``, no ``_link``)."""
+    return [str(h).split(";")[0].removesuffix("_link") for h in g["highway"]] if "highway" in g else [""] * len(g)
+
+
+def _modes(g):
+    return list(g["modes"]) if "modes" in g else [""] * len(g)
+
+
+def _connector_order(turn, highway, modes, low_turn, low_straight):
+    """roadstyle's per-edge draw order of a connector. A road connector (cars can use it) is part of the road: it ranks just under
+    its own road class (roadstyle's z order), so it lies under the lanes of its level but over a footway, or a footway ending
+    on the road shows on top of the road's own surface. A connector only people use stays below everything (``low_*``)."""
+    from roadstyle.render_web import ROAD_Z
+
+    if modes and set(modes.split(",")) <= {"walking", ""}:
+        return low_turn if turn else low_straight
+    return ROAD_Z.get(highway, 4) - (0.6 if turn else 0.5)
+
+
 def _footpaths_on_roads(g, share=0.6):
     """Indices (row positions) of the footpaths that lie mostly on a road of their level: mapped on the carriageway, a road is drawn above a footway by class and would hide
     them. Not a crossing (that is drawn under the road with its zebra on it) and not a connector."""
@@ -596,8 +616,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
         kind = dict(zip(zip(turns["from_lane"].astype(str), turns["to_lane"].astype(str)), turns["type"])) if turns is not None and len(turns) and "type" in turns else {}
         frm = g["from_lane"] if "from_lane" in g else [None] * len(g)
         to = g["to_lane"] if "to_lane" in g else [None] * len(g)
-        g["draw_order"] = [(-300.0 if kind.get((str(a), str(b))) in ("left", "right", "uturn") else -250.0) if c else float("nan")
-                           for c, a, b in zip(g["connector"].fillna(False).astype(bool), frm, to)]
+        g["draw_order"] = [(_connector_order(kind.get((str(a), str(b))) in ("left", "right", "uturn"), hw, m, -300.0, -250.0)) if c else float("nan")
+                           for c, a, b, hw, m in zip(g["connector"].fillna(False).astype(bool), frm, to, _classes(g), _modes(g))]
     lowgrp = [_group(r) for r in g.itertuples(index=False)]
     if any(x.startswith("low@") for x in lowgrp):
         # layers below ground are one roadstyle band, drawn by road class: layer -1 must lie over layer -2 over -3 (colour and casing). Order = layer * 90 + a rank inside the
@@ -613,7 +633,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
                 continue
             if "connector" in g and bool(g["connector"].iloc[i]):
                 turn = kind_t.get((str(g["from_lane"].iloc[i]), str(g["to_lane"].iloc[i]))) in ("left", "right", "uturn")
-                sub = -30.0 if turn else -20.0
+                sub = _connector_order(turn, _classes(g)[i], _modes(g)[i], -30.0, -20.0)
             else:
                 hw = str(g["highway"].iloc[i]).split(";")[0].removesuffix("_link") if "highway" in g else ""
                 sub = float(ROAD_Z.get(hw, 4)) + (15.0 if i in onr else 0.0)
