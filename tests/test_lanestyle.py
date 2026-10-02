@@ -669,3 +669,10 @@ def test_the_outline_has_no_gap_at_a_connectors_corner():
     """The outline at a connector is the boundary of the drawn surface, kept in short pieces too: a corner of a narrow connector between two lanes
     (Monaco, service road 156780348#1f) had a 1.3 m gap because pieces under 1.5 m were dropped and the lanes' own lines stop short of a junction."""
     assert _corner_gap_m(1.6, 1.5) < 0.3                    # a tight corner: the old rule left 1.7 m bare
+
+
+def test_the_roads_box_has_no_road_class_rows(tmp_path):
+    """The Roads filter box lists the lane uses and Bridges / Tunnels, not roadstyle's highway classes (Kaveh, 2026-10-02)."""
+    gmns, src = _dbs(tmp_path)
+    html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
+    assert 'label:not(.ls-use):not(.flt-grade)' in html and 'l.style.display = "none"' in html
