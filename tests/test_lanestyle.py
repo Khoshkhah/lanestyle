@@ -632,3 +632,40 @@ def test_a_link_can_open_the_map_at_a_spot(tmp_path):
     gmns, src = _dbs(tmp_path)
     html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
     assert "location.hash" in html and 'addEventListener("hashchange", go)' in html and "map.jumpTo" in html
+
+
+def _corner_gap_m(d=3.0, cw=1.5):
+    """A lane going east, a lane going north and a narrow connector turning from one to the other (a left turn at a corner): the longest stretch of
+    the drawn surface's boundary near the connector that has no outline line within 15 cm, in metres."""
+    import math
+
+    import geopandas as gpd
+    import shapely
+    from lanestyle.lines import lane_lines
+    from shapely.geometry import LineString, Point
+
+    kx = math.cos(math.radians(59.3))
+    ll = lambda pts: LineString([(18.0 + x / (111320 * kx), 59.3 + y / 111320) for x, y in pts])      # noqa: E731  metres from (18.0, 59.3)
+    t = [i / 8 for i in range(9)]
+    turn = [(2 * (1 - u) * u * d + u ** 2 * d, u ** 2 * d) for u in t]   # (0,0) -> (d,d)
+    rows = [dict(lane_id="a", link_id=1, lane_num=1, width_m=3.0, connector=False, from_node_id=1, to_node_id=2, highway="service", geometry=ll([(-20, 0), (0, 0)])),
+            dict(lane_id="b", link_id=2, lane_num=1, width_m=3.0, connector=False, from_node_id=2, to_node_id=3, highway="service", geometry=ll([(d, d), (d, d + 20)])),
+            dict(lane_id="c", link_id=3, lane_num=1, width_m=3.0, connector=False, from_node_id=2, to_node_id=4, highway="service", geometry=ll([(30, -30), (50, -30)])),   # a third link at node 2 (a junction: lane lines stop short of it), far from the corner
+            dict(lane_id="a>b", link_id=1, lane_num=1, width_m=cw, connector=True, from_lane="a", to_lane="b", from_node_id=1, to_node_id=2, highway="service", geometry=ll(turn))]
+    lanes = gpd.GeoDataFrame(rows, crs=4326)
+    fc = lane_lines(lanes, ls.lane_settings())
+    from shapely.geometry import shape
+    to_m = lambda g: LineString([((x - 18.0) * 111320 * kx, (y - 59.3) * 111320) for x, y in g.coords])      # noqa: E731
+    lines = shapely.union_all([to_m(q) for f in fc["features"] if f["properties"]["t"] == "edge" for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])])])
+    surface = shapely.union_all([Point(0, 0).buffer(1.5), Point(d, d).buffer(1.5), LineString([(-20, 0), (0, 0)]).buffer(1.5, cap_style="flat"),
+                                 LineString([(d, d), (d, d + 20)]).buffer(1.5, cap_style="flat"), LineString(turn).buffer(cw / 2)])
+    near = surface.boundary.intersection(Point(d / 2, d / 2).buffer(2.5))
+    pts = [near.interpolate(i / 10) for i in range(int(near.length * 10))]
+    bare = [p for p in pts if lines.distance(p) > 0.15]
+    return len(bare) / 10                                   # metres of boundary with no line
+
+
+def test_the_outline_has_no_gap_at_a_connectors_corner():
+    """The outline at a connector is the boundary of the drawn surface, kept in short pieces too: a corner of a narrow connector between two lanes
+    (Monaco, service road 156780348#1f) had a 1.3 m gap because pieces under 1.5 m were dropped and the lanes' own lines stop short of a junction."""
+    assert _corner_gap_m(1.6, 1.5) < 0.3                    # a tight corner: the old rule left 1.7 m bare

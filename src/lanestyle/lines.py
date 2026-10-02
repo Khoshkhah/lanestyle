@@ -376,13 +376,15 @@ def lane_lines(lanes, s, avoid=None, frame=None, frame_edges=None):
         for gp, (surfaces, foot, zone) in by_level.items():
             if not zone:
                 continue
-            edge = shapely.union_all(surfaces).boundary.intersection(shapely.union_all(zone).buffer(0.1))
+            u = shapely.union_all(surfaces)
+            u = shapely.MultiPolygon([Polygon(q.exterior, [h for h in q.interiors if Polygon(h).area >= 1.0]) for q in getattr(u, "geoms", [u])])   # a sliver between two lanes is no outline
+            edge = u.boundary.intersection(shapely.union_all(zone).buffer(trim + 0.1))      # the lane lines stop trim short of a junction: the outline covers that stretch
             if foot:
                 edge = edge.difference(shapely.union_all(foot))
             if above.get(gp) is not None:
                 edge = edge.difference(above[gp])
             parts = [q for q in getattr(shapely.line_merge(edge) if edge.geom_type == "MultiLineString" else edge, "geoms", [edge])
-                     if q.geom_type == "LineString" and q.length >= 1.5]                # a piece under 1.5 m is a crumb at a corner
+                     if q.geom_type == "LineString" and q.length >= 0.2]                # a boundary piece is never a crumb: a short one closes a corner
             if parts:
                 t = "bridge_edge" if _real(gp) == "bridge" and styles.get("bridge_edge") else "edge"
                 out.append((t, _real(gp), round(styles[t]["width_m"] / math.cos(math.radians(float(lat.mean()))), 4),
