@@ -17,6 +17,8 @@ direction of travel**:
 | `link_id`, `lane_num` | no | the road and the lane's number in it: needed for the [lane lines](lane-lines.md) and shown in the popup |
 | `reverse_link_id`, `from_node_id`, `to_node_id` | no | the same road the other way, and the road's end nodes: centre lines and junction cuts |
 | `lanes`, `turn`, `osm_id` | no | shown in the popup |
+| `modes`, `footway`, `crossing` | no | which networks have the link (`driving,walking`: a street cars and pedestrians share: the colour), the OSM `footway` tag (`sidewalk`, `crossing`, `link`) and `crossing` type |
+| `along_link_id`, `along_kind`, `along_links` | no | a footpath's road (the one it runs along longest), whether it is a mapped `sidewalk` or `adjacent`, and every road of its route (duckOSM's `link_along`): the gap between them is filled ([Footpaths, levels, connectors](footpaths-and-levels.md)) |
 | `connector`, `from_lane`, `to_lane` | no | a row with `connector` True is a lane connector: drawn like a lane, without arrows, lines or labels |
 
 Lane numbering is right-hand traffic: **lane 1 is the leftmost lane**, next to the centre line, and

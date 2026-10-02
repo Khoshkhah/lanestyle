@@ -34,6 +34,9 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
   are cut at junctions by the other links' lane surfaces. `render.py` ships them as compact columns
   (`_compact`), and `_LINES_JS` adds one MapLibre layer per band and type after that band's fill.
   The lanes themselves have no casing (`casing_m` 0).
+- `src/lanestyle/frames.py`: a road and its footpaths as one frame. `frames(lanes, s)` fills the gap between a footpath and the roads
+  duckOSM matched it to (`along_link_id` / `along_links`, pieces of the same street included) in a tint of the footpath colour and returns the
+  area whose outlines are left out. Drawing only: no geometry moves. The gap has no casing (`frame_casing` false).
 - `src/lanestyle/data/lanestyle.json`: lanestyle's defaults (colours, `default_width_m`, `casing_m`,
   `width_m_zoom`, `lines`, `junction_trim_m`). `lane_settings()` merges them with a `lanestyle.json` in the current folder, then
   with `settings["lanes"]`.
@@ -43,10 +46,8 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
 - **roadstyle changes only once:** the metre-width option (`width_m_col`, `width_m_zoom`, `casing_m`),
   released as roadstyle 0.11.0 (PR #20). Lane logic stays in lanestyle; ask before any other
   roadstyle change.
-- Don't change duckOSM (its `gmns-map` stays) until lanestyle is built and tested. One exception
-  (Kaveh, 2026-09-30): duckOSM branch `paired-carriageways` places a road mapped as two one-way ways
-  as one road (`docs/design/gmns_paired_carriageways.md` there). Lane-overlap reports are about our
-  placement, not OSM data.
+- duckOSM changes are allowed now, and are where a data problem is fixed (branch `gmns-values`, pushed 2026-10-02): lane counts, widths, movements,
+  crossings, a footpath's route along roads (`link_along`). Never patch the data in lanestyle's reader or drawing (Kaveh: "fix it at the root").
 - Work on **Monaco only** (Kaveh, 2026-09-30): build, check and count there; no other areas.
 - The repo is public (since 2026-09-30); commits use the GitHub noreply address (repo-local
   `user.email`), never the personal Gmail.
@@ -82,6 +83,22 @@ The tests build a tiny GMNS db and source db in `tmp_path`, so they need no real
 lives in `data/` (gitignored): `monaco.duckdb` and `monaco_gmns.duckdb`, rebuilt with
 `duckosm gmns data/monaco.duckdb -m driving -o data/monaco_gmns.duckdb`.
 
+## Footpaths, levels, connectors (2026-10-02)
+
+Build with `duckosm gmns SRC -m driving -m walking -o OUT`, read with `ls.from_gmns(OUT, modes=("driving", "walking"), source_db=SRC)`. Design notes:
+`docs/design/lanestyle_on_roadstyle.md` (every decision of that session, in order) and duckOSM's `docs/design/gmns_crossings.md`,
+`gmns_lane_connectors.md`, `gmns_walking_frame.md`.
+
+- **A tunnel differs from ground in colour and pattern only.** Outlines, joints, matching and draw order follow the same rules; the guard test is
+  `test_a_tunnel_differs_from_ground_in_look_only`. Layers are levels: roadstyle draws every layer below ground in one `low` band, but `lines._group`
+  (`low@-1`, `low@-2`) decides what interacts, layer -1 lies over -2 (draw order `layer * 90 + rank`, lower layers' lines cut by `lines.above`).
+  Layers above ground are still one band each.
+- **Connectors** take the modes both their lanes share, are drawn under the lanes (roadstyle per-edge order: turns -300, straight -250) and are not
+  clickable (`connectors_clickable`). A bike lane's connector is blue and 1.5 m wide. Their round ends are roadstyle's line cap (open: flat-ended shapes).
+- **A footpath on a road** (60 % of its area on the road of its level) is drawn above it; **a crossing tagged by mistake** (long and off a road, or matched along one) is drawn as a footway.
+- **Street View**: `render_lanes(..., street_view=True)` for roadstyle's page, or `street_view_key=KEY` for the map's own toggle (a real panorama needs billing on the Google project).
+  Never commit a key; `renders/` is gitignored. Previews live at fixed addresses (`renders/pedestrians/monaco_sv.html`, `map.html`): never make new file names.
+
 ## Gotchas
 
 - `link_id` is duckOSM's BIGINT hash: keep it `Int64` (never float64). roadstyle turns large ints
@@ -97,5 +114,6 @@ lives in `data/` (gitignored): `monaco.duckdb` and `monaco_gmns.duckdb`, rebuilt
   dashes, faded fill), a bridge of the high band with the deck look. lanestyle only tunes the look (`_ROADSTYLE`) and
   mirrors the band for its own layers (`lines._band`: low / ground / high / bridge). Needs the roadstyle with that
   change (the `levels-and-looks` branch, not yet released).
+- A GMNS file needs duckOSM `gmns-values` (commit 5a14e62 or later) for `link_along`, the continuation movements and the crossing tables; older files still draw, without frames and zebras.
 - Without `select_color`, roadstyle's violet selection glow hides the red clicked lane. That's why
   `render_lanes` passes the `clicked` colour.

@@ -49,6 +49,7 @@ nav:
       - guides/index.md
       - The lane table: guides/lane-table.md
       - Lane lines: guides/lane-lines.md
+      - Footpaths, levels, connectors: guides/footpaths-and-levels.md
       - Turns, clicks and labels: guides/turns.md
       - From OSM to lanes (duckOSM): pipeline.md
       - Put it on a website: guides/website.md

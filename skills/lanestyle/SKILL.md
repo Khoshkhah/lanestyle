@@ -26,6 +26,10 @@ Check: `python -c "import lanestyle, roadstyle; print(roadstyle.__version__)"`.
   `source_db="area.duckdb"` (the duckOSM database it was made from, same build: `link_id` = its
   `edge_id`) adds `osm_id` and the levels of older GMNS files; `ls.read_boundary(source_db)` is the
   area outline.
+- **Cars and pedestrians in one map**: `duckosm gmns area.duckdb -m driving -m walking -o area_gmns.duckdb`, then
+  `ls.from_gmns("area_gmns.duckdb", modes=("driving", "walking"), source_db="area.duckdb")` (later modes add only the links the earlier ones lack).
+  The table then has `modes` (colour by who may use a link), `footway` (`sidewalk` / `crossing` / `link`), `along_link_id`, `along_kind`, `along_links` (the roads a
+  footpath runs along) and `lanes.attrs["crossings"]` (the zebras); `render_lanes` draws sidewalks, the gap between a footpath and its road, and zebra stripes from them.
 - **The bundled sample**, no duckOSM needed: `docs/data/monaco_lanes.parquet` and
   `monaco_turns.parquet` in the repo (`gpd.read_parquet` / `pd.read_parquet`).
 - **Any lane table you build.** `lanes` is a GeoDataFrame, one row per lane, each LineString in
@@ -81,6 +85,11 @@ Defaults in `src/lanestyle/data/lanestyle.json`:
 | `type_label_zoom` | `null` | a zoom number draws each lane's turns (`left + thru`) along it from that zoom; off by default: the turns are in the popup (`lane_type`) |
 | `default_width_m`, `width_m_by_use`, `width_m_zoom`, `casing_m` | 3.25, `{walk: 2.0, bike: 1.5}`, 16, 0 | lane width where null (`width_m_by_use`: footpath, on-road bike lane); true widths from this zoom; casing inside each lane |
 | `fillet_m` | 0 (off) | pave gaps narrower than 2× this between lane surfaces |
+| `frame_gap_m`, `frame_reach_m`, `frame_casing` | 2, 8, false | a footpath matched to a road is one frame with it: the gap (up to `frame_reach_m`) is filled in a tint of its colour and no outline is drawn between them; `frame_gap_m` 0 turns frames off |
+| `connectors_clickable` | false | connectors can be clicked / hovered like lanes (off: the click goes to the lane under one) |
+| `tunnel_body` | `#f6f4ee` | opaque land-coloured base under the faded fill of tunnel lanes (hides lane-end rings); `""` = off |
+| `crossing_max_m`, `crossing_min_on` | 10, 0.2 | a `footway=crossing` link longer than this and under this share on a road, or matched along a road, is drawn as a footway |
+| `colors.sidewalk`, `colors.crossing` | terracotta, cream | a mapped sidewalk and a crosswalk |
 
 roadstyle's own settings go in the same dict (`settings={"config": {...}}`).
 
@@ -121,5 +130,8 @@ on. List them with `map.getStyle().layers.map(l => l.id)`.
 - **CARTO base maps are watermarked without a key** (`voyager`, `positron`, `dark_matter`): set
   `CARTO_API_KEY`, or `basemap="esri_street"` / `"osm"` / `"blank"`.
 - **Styling is settings, not keywords**: a colour passed as a keyword is ignored.
+- **A tunnel is a look, not a different rule**: levels (`layer`) separate lanes (layer -1 over -2, never connected to each other); do not add tunnel-only geometry rules.
+- **Fix data in duckOSM, not in the table**: a lane with no way out, a wrong lane count or a missing footpath match is a duckOSM problem; lanestyle only draws.
+- **Street View**: `render_lanes(lanes, turns, street_view=True)` (roadstyle's page) or `street_view_key=KEY` (the map's toggle). A key is written into the page: never commit it.
 - **Lanes have no casing** on purpose; neighbours merge into one surface and the lane lines
   separate them. Don't add `casing_m` to get dividers; style `lines` instead.
