@@ -71,6 +71,10 @@ _CLICK_JS = """<script>
     rsColor([[[d.id], C.clicked], [ids(t[0]), C.turns_into], [ids(t[1]), C.uturn]]);
   });
   document.addEventListener("rs:deselect", () => rsColor(null));
+  // a link can open the map at a spot: page.html#zoom/lat/lon (roadstyle fits the data first, so go again once the map is idle)
+  const go = () => { const h = location.hash.slice(1).split("/").map(Number);
+    if (h.length === 3 && !h.some(isNaN)) map.jumpTo({zoom: h[0], center: [h[2], h[1]]}); };
+  go(); window.addEventListener("hashchange", go); map.once("idle", go);
 })();
 </script>
 """

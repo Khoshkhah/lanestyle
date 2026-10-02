@@ -625,3 +625,10 @@ def test_a_road_connector_ranks_over_a_footway_and_a_walk_one_stays_below():
     assert _connector_order(True, "residential", "driving", -300, -250) == 3.4
     assert _connector_order(False, "residential", "walking", -300, -250) == -250                  # a footway's own connector
     assert _connector_order(False, "residential", "", -30, -20) > 1                               # no mode data: a road's
+
+
+def test_a_link_can_open_the_map_at_a_spot(tmp_path):
+    """page.html#zoom/lat/lon moves the map there (so a preview link can point at a reported spot)."""
+    gmns, src = _dbs(tmp_path)
+    html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
+    assert "location.hash" in html and 'addEventListener("hashchange", go)' in html and "map.jumpTo" in html
