@@ -83,8 +83,8 @@ python render_lanes.py monaco_gmns.duckdb monaco.html
 | **Lanes** | one line per lane, exactly its width in metres from zoom 16 on, roadstyle's class widths below; coloured by road class (the `mono` palette) |
 | **Lane lines** | dashed dividers between lanes of one direction, a solid centre line between the two directions, grey edges; they stop at junctions |
 | **Levels** | tunnels under the street, bridges over it, in the order of the OSM `layer` tag |
-| **Labels** | the street name once per road, and each lane's turns (`left + thru`, `right`, `U-turn`, `fork`, `merge`, `end`) from zoom 18 |
-| **Bus and bike lanes** | painted over the palette; their colours are rows in the Roads box |
+| **Labels** | the street name once per road; each lane's turns are in its popup (`type_label_zoom` draws them along the lane) |
+| **Bus, bike and walk lanes** | painted over the palette; their colours are rows in the Roads box. Footpaths and on-road bike lanes are drawn narrow; `modes=("driving", "walking")` puts the roads and their sidewalks on one map |
 | **Click a lane** | it turns red with a popup (road, lane, turns, width, level, ids); the lanes it leads into turn green, U-turns purple |
 | **Connectors** | the curves that join a lane to the next through a junction, drawn like lanes and coloured with them on a click |
 

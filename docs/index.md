@@ -59,7 +59,7 @@ box, popups, one-way arrows and the `rs*` JavaScript API. lanestyle is to lanes 
 
     [:octicons-arrow-right-24: Turns, clicks and labels](guides/turns.md)
 
--   :material-bus:{ .lg .middle } **Bus and bike lanes**
+-   :material-bus:{ .lg .middle } **Bus, bike and walk lanes**
 
     ---
 

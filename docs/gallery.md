@@ -40,8 +40,8 @@ lanes that join and leave it cut where they meet its surface.
 
 ## A tunnel
 
-Tunnel Dorsale passing under Avenue Prince Pierre: tunnel lanes at 85 % under the ground lanes, in
-roadstyle's draw order from the OSM `layer` tag, with round ends in the tunnel too.
+Tunnel Dorsale passing under Avenue Prince Pierre: a tunnel lane is an ordinary lane one level down, drawn under the
+ground lanes by its OSM `layer` tag, with its arrows and lane lines like any other.
 
 <div class="ls-shot" markdown>
 ![Tunnel Dorsale under Avenue Prince Pierre](img/gallery/tunnel.jpg)
@@ -49,10 +49,12 @@ roadstyle's draw order from the OSM `layer` tag, with round ends in the tunnel t
 
 ## Bus lanes
 
-Bus and bike lanes are painted over the palette, and their colours are rows in the Roads box.
+Bus, bike and walk lanes are painted over the palette, and their colours are rows in the Roads box. A footpath is
+drawn 2 m wide and an on-road bike lane 1.5 m. To see a road with its sidewalks, read the driving and walking modes
+together: `ls.from_gmns(db, modes=("driving", "walking"))`.
 
 ```python
-ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#9db8d9"}}})
+ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d35400"}}})
 ```
 
 <div class="ls-shot" markdown>

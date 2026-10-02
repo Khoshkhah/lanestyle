@@ -15,13 +15,15 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
 
 ## Layout
 
-- `src/lanestyle/gmns.py`: the reader. `from_gmns(gmns_db, mode, source_db)` reads
-  `gmns_<mode>.lane` / `.link` / `.movement` into `(lanes, turns)`. Levels come from the GMNS `link`
+- `src/lanestyle/gmns.py`: the reader. `from_gmns(gmns_db, mode, source_db, modes=None)` reads
+  `gmns_<mode>.lane` / `.link` / `.movement` into `(lanes, turns)`; `modes=("driving", "walking")` reads several into one
+  table (later modes add only the links the earlier ones lack: footpaths, not the roads walked on). Levels come from the GMNS `link`
   if it has `bridge` / `tunnel` / `layer`, else from `source_db` (the duckOSM db:
   `link_id` = `<mode>.edges.edge_id`). A NULL lane range in `movement` means every lane.
 - `src/lanestyle/render.py`: the engine.
   - `render_lanes(lanes, turns, palette="mono", settings, **kw)` calls `roadstyle.render_edges` with
-    `width_m_col="width_m"`. It adds a "Lane use" `color_options` entry for bus and bike lanes.
+    `width_m_col="width_m"`. It adds a "Lane use" `color_options` entry for bus, bike and walk lanes, and defaults a null width by use
+    (`_widths`: `width_m_by_use`).
   - It appends a click script (`_CLICK_JS`, using `rsQuery` / `rsGetProps` / `rsColor`) and returns
     roadstyle's `WebMap`. Extra keywords go straight to `render_edges`.
   - `write_serve` writes a `serve.py` next to a page.
@@ -86,7 +88,14 @@ lives in `data/` (gitignored): `monaco.duckdb` and `monaco_gmns.duckdb`, rebuilt
   into strings in the page.
 - In the page, roadstyle feature ids are indexes into its source, not `lane_id`s. The click script
   maps `lane_id` → id on the first click.
-- Lane order is right-hand traffic: lane 1 is leftmost, next to the centre line (duckOSM). Left-hand
-  areas would need that checked (`ponytail:` note in `lines.py`).
+- Lane 1 is the leftmost lane in the direction of travel, on either side (duckOSM fixed `--drive-side left`
+  on 2026-10-01: before, left-hand two-way roads counted from the centre line). `lines.py` still draws a
+  two-way road's centre line at lane 1's left edge: right for right-hand traffic only, so left-hand maps
+  need that changed (`ponytail:` note in `lines.py`).
+- Tunnels and bridges follow roadstyle's **levels and looks** (roadstyle `docs/design/levels_and_looks.md`): the level
+  alone decides the band (low, ground, high), a tunnel is a lane of the low band with the tunnel look (two-tone casing, light
+  dashes, faded fill), a bridge of the high band with the deck look. lanestyle only tunes the look (`_ROADSTYLE`) and
+  mirrors the band for its own layers (`lines._band`: low / ground / high / bridge). Needs the roadstyle with that
+  change (the `levels-and-looks` branch, not yet released).
 - Without `select_color`, roadstyle's violet selection glow hides the red clicked lane. That's why
   `render_lanes` passes the `clicked` colour.

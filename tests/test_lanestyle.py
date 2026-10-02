@@ -76,8 +76,9 @@ def test_render_lanes_metre_widths_uses_and_click(tmp_path):
     lanes, turns = ls.from_gmns(gmns, source_db=src)
     html = ls.render_lanes(lanes, turns=turns).html
     assert '"__rs_wm"' in html                                    # widths in metres (roadstyle 0.10)
-    assert "Lane use" in html and "#9db8d9" in html and "#3f8fc9" not in html   # bus only: no bike
-    assert '[["bus lanes", "#9db8d9"]]' in html and ".co-ctrl,.co-lg{display:none" in html   # a Roads-box row, no dropdown
+    assert "Lane use" in html and "#d6336c" in html and "#1c7ed6" not in html   # cars and a bus lane: no bike
+    # every lane is coloured by its mode group: a row each in the Roads box (cars first), no dropdown
+    assert '[["car lanes", "#a3a3a3"], ["bus lanes", "#d6336c"]]' in html and ".co-ctrl,.co-lg{display:none" in html
     t = json.loads(html.split("const T = ", 1)[1].split(", C = ", 1)[0])
     assert t["1_1"] == [["2_1"], ["3_1"]] and t["1_2"] == [["2_1"], []]
 
@@ -86,7 +87,7 @@ def test_settings_override_the_roadstyle_way(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "lanestyle.json").write_text('{"lanes": {"casing_m": 0.1}}')
     s = ls.lane_settings({"lanes": {"colors": {"bus": "#123456"}}})
-    assert s["casing_m"] == 0.1 and s["colors"]["bus"] == "#123456" and s["colors"]["bike"] == "#3f8fc9"
+    assert s["casing_m"] == 0.1 and s["colors"]["bus"] == "#123456" and s["colors"]["bike"] == "#1c7ed6"
 
 
 def test_write_serve_index_html_does_not_loop(tmp_path):
@@ -217,16 +218,16 @@ def test_turns_pair_movement_lanes_in_order(tmp_path):
 
 
 def test_lane_type_labels(tmp_path):
-    """Each lane is labelled with what it's for: the turns leaving it, 'end' where none does, the
-    use first for a bus lane; the labels layer is added to the page."""
+    """Each lane carries what it's for (the turns leaving it, 'end' where none does, the use first for a bus
+    lane) in its popup data; the labels along the lanes are off unless ``type_label_zoom`` is set."""
     gmns, src = _dbs(tmp_path)
     lanes, turns = ls.from_gmns(gmns, source_db=src)
     html = ls.render_lanes(lanes, turns=turns).html
     feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
     t = {f["properties"]["lane_id"]: f["properties"]["lane_type"] for f in feats}
-    assert t == {"1_1": "U-turn + thru", "1_2": "bus · thru", "2_1": "end", "3_1": "end"}
-    assert '"lane-type-labels"' in html
-    assert "lane-type-labels" not in ls.render_lanes(lanes, turns=turns, settings={"lanes": {"type_label_zoom": None}}).html
+    assert t == {"1_1": "U-turn + thru", "1_2": "bus · thru", "2_1": "end", "3_1": "end"}      # in the popup's data
+    assert "lane-type-labels" not in html                         # but not drawn along the lanes by default
+    assert '"lane-type-labels"' in ls.render_lanes(lanes, turns=turns, settings={"lanes": {"type_label_zoom": 18}}).html
 
 
 def test_lane_connectors_drawn_and_coloured(tmp_path):
@@ -266,3 +267,98 @@ def test_read_boundary(tmp_path):
     lanes, turns = ls.from_gmns(gmns, source_db=src)
     st = json.loads(ls.render_lanes(lanes, turns=turns, boundary=b).html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])
     assert "boundary" in st["sources"] and any(l["id"] == "boundary" for l in st["layers"])
+
+
+def _with_walking(tmp_path):
+    """_dbs plus a walking schema: footway link 5 (lane 5_1, use walk), the road link 2 walked on (lane 2_1, use walk),
+    and a movement from the footway onto the road."""
+    gmns, src = _dbs(tmp_path)
+    con = duckdb.connect(str(gmns))
+    con.execute("INSTALL spatial; LOAD spatial; CREATE SCHEMA gmns_walking")
+    ln = lambda y: f"ST_GeomFromText('LINESTRING(18.00 {y}, 18.01 {y})')"
+    con.execute("CREATE TABLE gmns_walking.link(link_id BIGINT, name VARCHAR, facility_type VARCHAR, "
+                "from_node_id BIGINT, to_node_id BIGINT)")
+    con.execute("INSERT INTO gmns_walking.link VALUES (2,'Bridge Rd','tertiary',11,12),(5,NULL,'footway',13,11)")
+    con.execute("CREATE TABLE gmns_walking.lane(lane_id VARCHAR, link_id BIGINT, lane_num BIGINT, allowed_uses VARCHAR, "
+                "width DOUBLE, turn VARCHAR, geom GEOMETRY)")
+    con.execute(f"INSERT INTO gmns_walking.lane VALUES ('2_1',2,1,'walk',NULL,NULL,{ln(59.31)}),"
+                f"('5_1',5,1,'walk',NULL,NULL,{ln(59.335)})")
+    con.execute("CREATE TABLE gmns_walking.movement(ib_link_id BIGINT, start_ib_lane BIGINT, end_ib_lane BIGINT, "
+                "ob_link_id BIGINT, start_ob_lane INTEGER, end_ob_lane INTEGER, type VARCHAR)")
+    con.execute("INSERT INTO gmns_walking.movement VALUES (5,NULL,NULL,2,NULL,NULL,'thru')")
+    con.close()
+    return gmns, src
+
+
+def test_modes_add_only_the_footpaths_not_the_roads_walked_on(tmp_path):
+    gmns, src = _with_walking(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
+    assert set(lanes.lane_id) == {"1_1", "1_2", "2_1", "3_1", "5_1"}        # the road's own walk lane is not added
+    r = lanes.set_index("lane_id")
+    assert r.loc["5_1", "use"] == "walk" and r.loc["1_2", "use"] == "bus" and r.loc["2_1", "use"] == "auto"
+    assert lanes["link_id"].dtype == "Int64"
+    assert ("5_1", "2_1") in set(zip(turns["from_lane"], turns["to_lane"]))   # the footway leads onto the road
+    assert set(turns["from_lane"]) | set(turns["to_lane"]) <= set(lanes.lane_id)
+    only, _ = ls.from_gmns(gmns, mode="walking")                             # one mode: unchanged
+    assert set(only.lane_id) == {"2_1", "5_1"}
+    assert set(ls.from_gmns(gmns)[0].lane_id) == {"1_1", "1_2", "2_1", "3_1"}
+
+
+def test_default_widths_by_use():
+    import pandas as pd
+    from lanestyle.render import _widths, lane_settings
+    g = pd.DataFrame({"use": ["auto", "walk", "bike", "bike", "bike", "walk"],
+                      "lane_num": [1, 1, 2, 1, 1, 1], "lanes": [2, None, 1, 2, None, 1],
+                      "width_m": [None, None, None, None, None, 2.5]})
+    # auto 3.25; walk 2.0; a bike lane beyond the 1 motor lane 1.5; a bike lane that is one of 2 motor lanes 3.25;
+    # a bike lane on a cycleway (no motor lanes) 1.5; a tagged width is kept
+    assert _widths(g, lane_settings()).tolist() == [3.25, 2.0, 1.5, 3.25, 1.5, 2.5]
+    assert _widths(g, lane_settings({"lanes": {"width_m_by_use": {"walk": 1.2}}})).tolist()[1] == 1.2
+    # without lane_num / lanes the bike rule cannot tell, so a bike lane keeps the default
+    assert _widths(g.drop(columns=["lane_num", "lanes"]), lane_settings()).tolist()[2] == 3.25
+
+
+def test_several_modes_colour_a_lane_by_the_set_of_modes_that_can_use_it(tmp_path):
+    """A street cars and pedestrians share, a car-only road and a pedestrian-only footway are three colours, each with a
+    Roads-box row; a bus lane keeps its own. One mode: the lane's use, as before."""
+    gmns, src = _with_walking(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
+    r = lanes.set_index("lane_id")
+    assert r.loc["2_1", "modes"] == "driving,walking" and r.loc["5_1", "modes"] == "walking"   # link 2 is in both networks
+    assert r.loc["1_1", "modes"] == "driving"
+    html = ls.render_lanes(lanes, turns=turns).html
+    for row in ("cars only", "cars + pedestrians", "pedestrians only", "bus lanes"):
+        assert row in html, row
+    assert "#7fb7a8" in html and "#f0cb8c" in html                          # the shared street, the footway
+    feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
+    g = {f["properties"]["lane_id"]: f["properties"]["mode_group"] for f in feats}
+    assert g == {"1_1": "driving", "1_2": "bus", "2_1": "driving+walking", "3_1": "driving", "5_1": "walking"}
+    single = ls.render_lanes(*ls.from_gmns(gmns)).html                      # one mode: by use, no groups
+    assert "cars + pedestrians" not in single and "mode_group" not in single and "car lanes" in single
+
+
+def test_a_tunnel_is_one_whole_lane_in_its_band_and_a_bridge_keeps_its_look(tmp_path):
+    """roadstyle's levels and looks: the level alone decides the band, so a tunnel lane is drawn whole, under the
+    ground lanes, with its own look (no stretches to hide its arrows and lane lines); a bridge keeps its deck look."""
+    gmns, src = _dbs(tmp_path)
+    html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
+    style = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])
+    p = {f["properties"]["lane_id"]: f["properties"] for f in style["sources"]["roads"]["data"]["features"]}
+    assert p["2_1"]["lvl"] == 1 and p["2_1"]["__rs_bridge"] and not p["2_1"]["__rs_tunnel"]    # the bridge: its look
+    assert "tpieces" not in style["sources"]                       # nothing cut into stretches
+    assert "moveLayer" not in html.split("const T = ")[-1]         # and no arrow workaround
+
+
+def test_every_lane_is_coloured_by_its_mode_group(tmp_path):
+    gmns, src = _dbs(tmp_path)
+    html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
+    assert '"Lane use"' in html and '"#a3a3a3"' in html           # cars have their own colour, not the class's
+    assert '"color_active"' in html or "_coActive = 1" in html     # and it is the colouring the page opens with
+
+
+def test_a_footpath_has_no_arrow_and_a_tunnel_is_as_opaque_as_a_road(tmp_path):
+    gmns, src = _with_walking(tmp_path)
+    html = ls.render_lanes(*ls.from_gmns(gmns, modes=("driving", "walking"))).html
+    feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
+    arrow = {f["properties"]["lane_id"]: f["properties"]["oneway"] for f in feats}
+    assert arrow["5_1"] in (0, False) and arrow["1_1"] in (1, True) and arrow["2_1"] in (1, True)   # walk: none; roads: yes

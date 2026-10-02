@@ -12,10 +12,38 @@ from pathlib import Path
 from lanestyle.junctions import junction_fillets
 from lanestyle.lines import lane_lines
 
-_POPUP = ["name", "lane_type", "connects", "highway", "lane_id", "lane_num", "lanes", "use", "turn", "width_m", "tunnel", "bridge",
+_POPUP = ["name", "lane_type", "connects", "highway", "lane_id", "lane_num", "lanes", "use", "modes", "turn", "width_m", "tunnel", "bridge",
           "layer", "turns_in", "turns_out", "from_lane", "to_lane", "link_id", "reverse_link_id", "osm_id", "from_node_id",
           "to_node_id"]                       # the ones present and not null show
-_MARKED = ("bus", "bike")          # uses painted over the palette; any other use keeps the road colour
+_MARKED = ("auto", "bus", "bike", "walk")       # the mode groups: each has its colour and a legend row
+_USE_NAME = {"auto": "car lanes", "bus": "bus lanes", "bike": "bike lanes", "walk": "footways"}      # the legend rows
+# with several modes loaded (``from_gmns(modes=...)``) a lane is coloured by the set of modes that can use it
+_GROUP_ORDER = ("driving", "walking", "cycling")
+_GROUP_NAME = {"driving": "cars only", "driving+walking": "cars + pedestrians", "walking": "pedestrians only",
+               "cycling": "bikes only", "driving+cycling": "cars + bikes", "walking+cycling": "pedestrians + bikes",
+               "driving+walking+cycling": "cars + pedestrians + bikes"}
+
+
+def _colour_groups(g, s):
+    """What colours the lanes and what the Roads box lists: ``(column, {value: colour}, [(label, colour)])``.
+
+    One mode: the lane's ``use`` (car, bus, bike, walk). Several (a ``modes`` column from ``from_gmns(modes=...)`` with
+    more than one distinct set): the set of modes whose network has the lane's link, so a street cars and pedestrians
+    share, a car-only tunnel and a pedestrian-only footway differ; a bus lane and an on-road bike lane keep their own."""
+    col = s["colors"]
+    if "modes" in g and g["modes"].replace("", None).dropna().nunique() > 1:
+        key = g["modes"].map(lambda m: "+".join(x for x in _GROUP_ORDER if x in m.split(",")) or "driving")
+        lane_beyond = (g["lane_num"] > g["lanes"].fillna(0)) if {"lane_num", "lanes"} <= set(g.columns) else False
+        key = key.where(~(g["use"] == "bus"), "bus").where(~((g["use"] == "bike") & lane_beyond), "bike")
+        g["mode_group"] = key
+        colours = {k: col["groups"].get(k, col["auto"]) for k in set(key)} | {"bus": col["bus"], "bike": col["bike"]}
+        names = {**_GROUP_NAME, "bus": "bus lanes", "bike": "bike lanes"}
+        order = [*_GROUP_NAME, "bus", "bike"]
+        rows = [(names[k], colours[k]) for k in order if k in set(key)]
+        return "mode_group", colours, rows
+    present = {u: col[u] for u in _MARKED if u in set(g["use"])}
+    colours = {**present, **{u: col["auto"] for u in set(g["use"]) if u not in present}}
+    return "use", colours, [(_USE_NAME.get(u, f"{u} lanes"), c) for u, c in present.items()]
 
 # click a lane: it turns `clicked`, the lanes its turns lead into `turns_into`, U-turns `uturn`.
 # roadstyle feature ids are indexes into its source, so lane_id -> id is built on the first click.
@@ -50,10 +78,9 @@ _LINES_JS = """<script>
   const L = {type: "FeatureCollection", features: D.c.map((c, i) => ({type: "Feature",
     properties: {t: D.types[D.t[i]], b: D.bands[D.b[i]], k: D.k[i]},
     geometry: {type: Array.isArray(c[0][0]) ? "MultiLineString" : "LineString", coordinates: c}}))};
-  // after the band's last fill layer: roadstyle (main, 2026-09-30) draws tunnel stretches at street
-  // level (roads-tunnelgr-*, after the under-road pieces); older versions have only roads-tunnel-fill
-  const AFTER = {tunnel: ["roads-tunnelgr-fill", "roads-tunnel-under-fill", "roads-tunnel-fill"],
-                 low: ["roads-low-fill"], ground: ["roads-fill"], high: ["roads-high-fill"],
+  // after the band's last fill layer (roadstyle's levels and looks: three bands, a tunnel is a road of the low band,
+  // its dashes the first of these that exists; a bridge's look layer is drawn after the high band)
+  const AFTER = {low: ["roads-low-fill-pat", "roads-low-fill"], ground: ["roads-fill"], high: ["roads-high-fill"],
                  bridge: ["roads-bridge-fill"]};
   const px = z => 512 * Math.pow(2, z) / 40075016.686;
   function add(){
@@ -99,8 +126,17 @@ def _compact(fc):
 # made for road-width lines; at lane width the dashes become blocks, every connector dashes from its
 # own start (fans where they overlap), and see-through lanes show every overlap. Lane maps draw
 # tunnels at 85 %, a plain casing, no fill dashes: a tunnel still reads lighter, overlaps hardly show
-_ROADSTYLE = {"config": {"tunnel_gap_shade": 0, "tunnel_dash_shade": 0, "tunnel_opacity_scale": 0.85,
-                         "tunnel_fill_dash": []}}
+_CLASSES = ("motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "living_street",
+            "service", "track", "cycleway", "footway", "path")
+# Lanes are coloured by mode group, so the highway classes in the Roads box are filters, not colours: one grey each.
+# Levels and looks (roadstyle): a tunnel is a road of the low band, a bridge of the high band, each with its own look
+# (a faded fill with dashes, a deck casing), drawn whole by the one rule; the class dashes (footway, path ...) stay,
+# coloured by mode group.
+_ROADSTYLE = {"config": {"tunnel_opacity_scale": 0.75, "tunnel_gap_shade": 0.15, "tunnel_dash_shade": 0.3,
+                         "tunnel_fill_dash_color": "rgba(255,255,255,0.35)", "bridge_casing_m": 0.3, "bridge_casing_px": 1.5},
+              # one grey per class, and no class dashes: a footway, path, cycleway or track lane is a solid strip like any lane
+              "palettes": {name: {c: {"fill": "#a3a3a3", "dash": None} for c in _CLASSES}
+                           for name in ("mono", "carto", "highsat")}}
 
 
 def _break_twins(g):
@@ -195,24 +231,13 @@ def _lane_types(g, turns):
 # roadstyle ends its tunnel layers flat (butt caps, for the casing's dash ticks); at lane width two
 # flat ends meeting at an angle leave a wedge of background, so lane maps give them round ends like
 # every other road layer (Kaveh: "use curving for road end points")
-_ROUND_ENDS_JS = """<script>
-(function(){
-  function round(){
-    for (const l of map.getStyle().layers)
-      if (l.type === "line" && l.id.startsWith("roads-tunnel") && map.getLayoutProperty(l.id, "line-cap") === "butt")
-        map.setLayoutProperty(l.id, "line-cap", "round");
-  }
-  if (map.isStyleLoaded()) round(); else map.once("load", round);
-})();
-</script>
-"""
 
 # the junction fillets, a fill layer under each band's lanes, in the node's main road's colour
 # (roadstyle's class colours, read from the page)
 _FILLETS_JS = """<script>
 (function(){
   const F = __FILLETS__;
-  const BEFORE = {tunnel: ["roads-tunnel-fill"], low: ["roads-low-fill"], ground: ["roads-fill"],
+  const BEFORE = {low: ["roads-low-fill"], ground: ["roads-fill"],
                   high: ["roads-high-fill"], bridge: ["roads-bridge-fill"]};
   function add(){
     if (map.getSource("lane-fillets")) return;
@@ -228,7 +253,7 @@ _FILLETS_JS = """<script>
       map.addLayer({id: "lane-fillets-" + b, type: "fill", source: "lane-fillets",
                     filter: ["==", ["get", "b"], b],
                     paint: {"fill-color": Object.keys(cols).length ? color : "#888888",
-                            "fill-opacity": b === "tunnel" ? 0.85 : 1}}, before);
+                            "fill-opacity": 1}}, before);
     }
   }
   if (map.isStyleLoaded()) add(); else map.once("load", add);
@@ -255,12 +280,30 @@ def lane_settings(settings=None):
     return _merge(s, (settings or {}).get("lanes"))
 
 
+def _widths(g, s):
+    """Each lane's width in metres: its own ``width_m``, else a default by use (``width_m_by_use``): a ``walk`` lane is
+    a footpath, and a ``bike`` lane *beyond the link's motor lanes* (``lane_num`` > ``lanes``; empty ``lanes`` is 0,
+    as on a cycleway) is an on-road bike lane, both narrow; any other lane is ``default_width_m``."""
+    import pandas as pd
+
+    w = g["width_m"] if "width_m" in g else pd.Series(float("nan"), index=g.index)
+    by = s.get("width_m_by_use") or {}
+    default = pd.Series(float(s["default_width_m"]), index=g.index)
+    if "walk" in by:
+        default[g["use"] == "walk"] = by["walk"]
+    if "bike" in by and {"lane_num", "lanes"} <= set(g.columns):
+        beyond = pd.to_numeric(g["lane_num"], errors="coerce") > pd.to_numeric(g["lanes"], errors="coerce").fillna(0)
+        default[(g["use"] == "bike") & beyond] = by["bike"]
+    return w.fillna(default)
+
+
 def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     """Draw a lane table (see :func:`lanestyle.from_gmns` for the columns) as one roadstyle map and
     return roadstyle's ``WebMap`` (``.save(path)``, ``.html``).
 
     Each lane is one line on its own geometry, exactly ``width_m`` metres wide from
-    ``width_m_zoom`` on (``default_width_m`` where null). Bus and bike lanes are painted over the
+    ``width_m_zoom`` on (where null: ``width_m_by_use`` for a footpath or an on-road bike lane, else
+    ``default_width_m``). Bus, bike and walk lanes are painted over the
     palette (a "Lane use" colouring; the legend lists only uses present). ``turns`` (``from_lane``,
     ``to_lane``, optional ``type``) makes a lane clickable: it turns red and the lanes it leads into
     green, U-turns purple. Lane lines (dividers, centre and edge lines, styled per type under
@@ -271,16 +314,19 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
 
     s = lane_settings(settings)
     g = lanes.copy()
-    g["width_m"] = g["width_m"].fillna(s["default_width_m"]) if "width_m" in g else s["default_width_m"]
     g["use"] = g["use"].fillna("auto") if "use" in g else "auto"
-    present = {u: s["colors"][u] for u in _MARKED if u in set(g["use"])}
-    opts = {}
-    if present:
-        opts = dict(color_options={"Road class": {}, "Lane use": {"color_by": "use", "colors": present}},
-                    color_active="Lane use")
+    g["width_m"] = _widths(g, s)
+    # every lane is coloured by its mode group (car, bus, bike, walk), not by its road's class; a use that has no
+    # group of its own is a car lane's colour
+    colour_col, palette_colors, rows = _colour_groups(g, s)
+    opts = dict(color_options={"Road class": {}, "Lane use": {"color_by": colour_col, "colors": palette_colors}},
+                color_active="Lane use")
     conn = g["connector"].fillna(False).astype(bool) if "connector" in g else None
+    walk = g["use"] == "walk"                            # a footpath is walked both ways: no arrow
     if conn is not None:                                 # arrows on lanes, not on connectors
-        g["oneway"] = ~conn
+        g["oneway"] = ~conn & ~walk
+    elif walk.any():
+        g["oneway"] = ~walk
     if turns is not None and len(turns):                 # what each lane is for (label + popup)
         g["lane_type"] = _lane_types(g, turns)
         if conn is not None and conn.any():              # a connector says what it is, in words
@@ -314,11 +360,11 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         **{"select_color": s["colors"]["clicked"], **kwargs},   # roadstyle's own selection glow
         settings=_merge(_ROADSTYLE, {k: v for k, v in (settings or {}).items() if k != "lanes"}),
         **opts)
-    js = _ROUND_ENDS_JS
+    js = ""
     if fillets:
         js += _FILLETS_JS.replace("__FILLETS__", json.dumps(fillets, separators=(",", ":")))
-    if present:                                          # bus / bike colours as rows in the Roads box
-        js += _USE_ROWS_JS.replace("__ROWS__", json.dumps([[f"{u} lanes", c] for u, c in present.items()]))
+    if rows:                                             # the mode groups' colours as rows in the Roads box
+        js += _USE_ROWS_JS.replace("__ROWS__", json.dumps([[label, c] for label, c in rows]))
     if lines:
         js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
                .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"]))

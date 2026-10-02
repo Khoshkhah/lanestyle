@@ -20,8 +20,8 @@ Draw a [lane table](../guides/lane-table.md) as one roadstyle map and return roa
 | `**kwargs` | anything `roadstyle.render_edges` takes: `basemap`, `boundary`, `overlays`, `name`, `view_3d`, … |
 
 It calls `roadstyle.render_edges` with `width_m_col="width_m"`, `width_m_zoom`, `casing_m` and the
-popup columns, then appends its own scripts: the lane lines, the bus and bike rows in the Roads
-box, round ends in tunnels, the click script and the type labels.
+popup columns, then appends its own scripts: the lane lines, the mode-group rows in the Roads
+box, the click script and, when asked for, the type labels.
 
 ```python
 import roadstyle as rs
@@ -31,11 +31,14 @@ ls.render_lanes(lanes, turns=turns,
                 basemap="dark_matter").save("lanes.html")
 ```
 
-## `from_gmns(gmns_db, mode="driving", source_db=None)`
+## `from_gmns(gmns_db, mode="driving", source_db=None, modes=None)`
 
 Read `gmns_<mode>.lane` / `.link` / `.movement` (and `.lane_connector` when present) from a duckOSM
 GMNS database into `(lanes, turns)`.
 
+- `modes`: several modes into one table, e.g. `modes=("driving", "walking")`. The first is read as it is; each
+  later one adds only the lanes of links the earlier ones do not have (a footpath, not the road you also walk on),
+  and only the turns between lanes that are kept. `modes` wins over `mode`.
 - `highway` is the link's `facility_type`, `width_m` the lane's `width` (null where untagged;
   `render_lanes` fills the default), `use` from `allowed_uses`, `name` on lane 1 only.
 - Levels (`bridge` / `tunnel` / `layer`) and `osm_id`: from the GMNS `link` if it has those

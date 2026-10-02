@@ -10,8 +10,9 @@ def _truthy(v):
 
 
 def _band(r):
-    """roadstyle's draw band for a lane (render_web._mark_lvl): the OSM ``layer`` tag, else 1 for a
-    bridge, -1 for a tunnel; the look (tunnel / bridge) from the tags."""
+    """roadstyle's draw band for a lane (render_web._mark_lvl; docs/design/levels_and_looks.md): the level alone, the OSM
+    ``layer`` tag, else 1 for a bridge, -1 for a tunnel: ``low`` (a tunnel is a road of it), ``ground`` or ``high``; a bridge's
+    deck look draws after the high band, so its lines go with it."""
     try:
         ly = int(float(getattr(r, "layer", None)))
     except (TypeError, ValueError):
@@ -19,7 +20,7 @@ def _band(r):
     br, tu = _truthy(getattr(r, "bridge", None)), _truthy(getattr(r, "tunnel", None))
     lvl = ly or (1 if br else -1 if tu else 0)
     if lvl < 0:
-        return "tunnel" if tu else "low"
+        return "low"
     if lvl > 0:
         return "bridge" if br else "high"
     return "ground"

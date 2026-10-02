@@ -10,9 +10,9 @@ direction of travel**:
 | `lane_id` | yes | unique id (a string; duckOSM's are `<link_id>_<lane_num>`) |
 | `geometry` | yes | the lane's centre line |
 | `highway` | yes | road class, as in roadstyle: colour, filter box, width below zoom 16 |
-| `width_m` | no, 3.25 | lane width in metres (`default_width_m` where null) |
-| `use` | no, `auto` | `auto`, `bus` or `bike`; bus and bike lanes are painted over the palette |
-| `bridge`, `tunnel`, `layer` | no | the lane's level, read exactly as roadstyle reads them |
+| `width_m` | no, 3.25 | lane width in metres (where null: 2 m for a `walk` lane, 1.5 m for a `bike` lane beyond the link's motor lanes, else `default_width_m`) |
+| `use` | no, `auto` | `auto`, `bus`, `bike` or `walk`; every lane is coloured by its mode group (car, bus, bike, walk: footways); a `walk` lane gets no direction arrow, a footpath is walked both ways |
+| `bridge`, `tunnel`, `layer` | no | the lane's level: the `layer` tag, else 1 for a bridge, -1 for a tunnel. The level alone decides where a lane is drawn (under the ground lanes, with them, over them); a tunnel or a bridge only gives it its look (a faded dashed fill, a deck casing). Every lane is drawn by the same rule, with its arrows and lane lines |
 | `name` | no | street-name label; set it on one lane per road, or every lane gets a label |
 | `link_id`, `lane_num` | no | the road and the lane's number in it: needed for the [lane lines](lane-lines.md) and shown in the popup |
 | `reverse_link_id`, `from_node_id`, `to_node_id` | no | the same road the other way, and the road's end nodes: centre lines and junction cuts |

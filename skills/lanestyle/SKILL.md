@@ -30,8 +30,8 @@ Check: `python -c "import lanestyle, roadstyle; print(roadstyle.__version__)"`.
   `monaco_turns.parquet` in the repo (`gpd.read_parquet` / `pd.read_parquet`).
 - **Any lane table you build.** `lanes` is a GeoDataFrame, one row per lane, each LineString in
   the direction of travel (EPSG:4326). Required: `lane_id` (string), `geometry`, `highway` (OSM
-  class). Optional, each switching a feature on: `width_m` (3.25 where null), `use` (`auto` |
-  `bus` | `bike`), `bridge` / `tunnel` / `layer`, `name` (set it on one lane per road, or every
+  class). Optional, each switching a feature on: `width_m` (where null: 2 m for `walk`, 1.5 m for a `bike` lane beyond the link's motor lanes, else 3.25), `use` (`auto` |
+  `bus` | `bike` | `walk`), `bridge` / `tunnel` / `layer`, `name` (set it on one lane per road, or every
   lane gets a label), `link_id` + `lane_num` (the lane lines: which lanes share a road; lane 1 is
   the LEFTMOST lane, right-hand traffic), `reverse_link_id` + `from_node_id` + `to_node_id` (centre
   lines, junction cuts), `connector` + `from_lane` + `to_lane` (connector curves through
@@ -51,7 +51,7 @@ m = ls.render_lanes(
     palette="mono",                                    # default: neutral roads, lane colours stand out
     boundary=ls.read_boundary("monaco.duckdb"),        # dashed outline; or ls.boundary_from_geojson(path)
     basemap="voyager",                                 # any roadstyle base map; CARTO ones need CARTO_API_KEY
-    settings={"lanes": {"colors": {"bus": "#9db8d9"}}},   # lanestyle's own settings under "lanes"
+    settings={"lanes": {"colors": {"bus": "#d35400"}}},   # lanestyle's own settings under "lanes"
 )
 m.save("monaco.html")                                  # roadstyle WebMap: .save(path), .html
 ls.write_serve("monaco.html")                          # optional: serve.py next to it (no caching)
@@ -78,8 +78,8 @@ Defaults in `src/lanestyle/data/lanestyle.json`:
 | `colors.bus`, `colors.bike`, `colors.clicked`, `colors.turns_into`, `colors.uturn` | blue, blue, red, green, purple | lane and click colours |
 | `lines.divider` / `lines.centre` / `lines.edge` | `{color, width_m, dash_m}` | `dash_m: null` = solid; `"lines": false` = none |
 | `junction_trim_m` | 1 | lines stop this far short of the other roads' surface |
-| `type_label_zoom` | 18 | `null` = no turn labels |
-| `default_width_m`, `width_m_zoom`, `casing_m` | 3.25, 16, 0 | lane width where null; true widths from this zoom; casing inside each lane |
+| `type_label_zoom` | `null` | a zoom number draws each lane's turns (`left + thru`) along it from that zoom; off by default: the turns are in the popup (`lane_type`) |
+| `default_width_m`, `width_m_by_use`, `width_m_zoom`, `casing_m` | 3.25, `{walk: 2.0, bike: 1.5}`, 16, 0 | lane width where null (`width_m_by_use`: footpath, on-road bike lane); true widths from this zoom; casing inside each lane |
 | `fillet_m` | 0 (off) | pave gaps narrower than 2× this between lane surfaces |
 
 roadstyle's own settings go in the same dict (`settings={"config": {...}}`).

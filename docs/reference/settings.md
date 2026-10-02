@@ -15,7 +15,7 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d354
 
 | Key | Default | Meaning |
 |---|---|---|
-| `colors.bus`, `colors.bike` | muted blue, blue | lane colours painted over the palette, with a row each in the Roads box |
+| `colors.auto`, `colors.bus`, `colors.bike`, `colors.walk` | grey, pink, blue, amber | each lane is coloured by its mode group, with a row each in the Roads box (*car lanes*, *bus lanes*, *bike lanes*, *footways*); a use without a group of its own gets the car colour |
 | `colors.clicked` | red | the clicked lane (also roadstyle's selection glow) |
 | `colors.turns_into` | green | the lanes the clicked lane leads into |
 | `colors.uturn` | purple | the lanes it reaches by a U-turn |
@@ -23,12 +23,15 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d354
 | `junction_trim_m` | 1 | how far lines stop short of the other roads' surface at a junction |
 | `fillet_m` | 0 (off) | pave gaps narrower than twice this between lane surfaces |
 | `line_min_device_px` | 1.5 | lines are never thinner than this many physical pixels |
-| `type_label_zoom` | 18 | the zoom the lane type labels appear at; `null` = no labels |
+| `type_label_zoom` | `null` | a zoom number draws each lane's turns along it (`left + thru`) from that zoom; `null` (default) = no labels: they are in the popup as `lane_type` |
 | `default_width_m` | 3.25 | lane width where `width_m` is null |
+| `width_m_by_use` | `{"walk": 2.0, "bike": 1.5}` | the width where `width_m` is null, for a footpath (`walk`) and for an on-road bike lane: a `bike` lane beyond the link's motor lanes (`lane_num` > `lanes`; empty `lanes` counts as 0, as on a cycleway). Any other lane is `default_width_m` |
 | `casing_m` | 0 | roadstyle's casing inside each lane's width (0: lanes merge into one surface) |
 | `width_m_zoom` | 16 | from this zoom on, lanes are their width in metres; roadstyle's class widths below |
 
 roadstyle's own settings (palettes, base maps, labels, arrows, tunnels) go in the same `settings=`
 dict or a `roadstyle.json`: roadstyle's
-[Settings & palettes](https://khoshkhah.github.io/roadstyle/reference/settings/). lanestyle sets
-three of them for lane maps: tunnels at 85 % opacity, with no gap shade and no fill dashes.
+[Settings & palettes](https://khoshkhah.github.io/roadstyle/reference/settings/). lanestyle sets two things
+for lane maps: a palette with one grey for every class (lanes are coloured by mode group; the class dashes of a footway
+or path stay, in the mode colour) and a lighter tunnel look. A lane's level decides where it is drawn: see
+[Lane table](../guides/lane-table.md).

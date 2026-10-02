@@ -51,7 +51,7 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {
 
 `"fillet_m": 1.5` (off by default) also paves every gap narrower than twice that between lane
 surfaces, corners at junctions and slivers where two carriageways diverge, in the nearest lane's
-colour. Lane ends are round everywhere, tunnels included, so the gain is small and a Monaco build
+colour. Lane ends are round everywhere, so the gain is small and a Monaco build
 takes about 18 s longer.
 
 Right-hand traffic only for now: lane 1 is the leftmost lane. Left-hand areas would need the lane

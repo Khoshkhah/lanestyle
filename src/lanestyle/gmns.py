@@ -9,7 +9,37 @@ def _cols(con, schema, table, db=None):
     return {c for (c,) in con.execute(q, args).fetchall()}
 
 
-def from_gmns(gmns_db, mode="driving", source_db=None):
+def from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
+    """Read ``gmns_<mode>`` into ``(lanes, turns)``; the columns are described on :func:`_from_gmns_mode` below.
+
+    ``modes`` reads several modes into one table, e.g. ``("driving", "walking")``: the first is read as it is, each
+    later one adds only the lanes of links the earlier ones do not have (a footpath, not the road you also walk
+    on), and only the turns between lanes that are kept. A ``modes`` column says which of them have the link
+    (``"driving,walking"``: a street cars and pedestrians share), which ``render_lanes`` colours by. ``modes`` wins
+    over ``mode``."""
+    if not modes:
+        return _from_gmns_mode(gmns_db, mode, source_db)
+    import geopandas as gpd
+    import pandas as pd
+
+    tables, turn_tables, seen, modes_of = [], [], set(), {}
+    for i, m in enumerate(modes):
+        lanes, turns = _from_gmns_mode(gmns_db, m, source_db)
+        for link in set(lanes["link_id"].dropna()):      # every mode whose network has the link, kept or not
+            modes_of.setdefault(link, []).append(m)
+        if i:
+            lanes = lanes[~lanes["link_id"].isin(seen)]
+        seen |= set(lanes["link_id"].dropna())
+        tables.append(lanes)
+        turn_tables.append(turns)
+    lanes = gpd.GeoDataFrame(pd.concat(tables, ignore_index=True), crs=4326)
+    lanes["modes"] = lanes["link_id"].map(lambda l: ",".join(modes_of.get(l, [])))    # e.g. "driving,walking"
+    turns = pd.concat(turn_tables, ignore_index=True)
+    keep = set(lanes["lane_id"])
+    return lanes, turns[turns["from_lane"].isin(keep) & turns["to_lane"].isin(keep)].reset_index(drop=True)
+
+
+def _from_gmns_mode(gmns_db, mode, source_db):
     """Read ``gmns_<mode>.lane`` / ``.link`` / ``.movement`` into ``(lanes, turns)``.
 
     ``lanes``: a GeoDataFrame, one row per lane (EPSG:4326, each line in the direction of travel)
@@ -40,6 +70,7 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
     import pandas as pd
 
     g = f"gmns_{mode}"
+    lvl = ""
     con = duckdb.connect(str(gmns_db), read_only=True)
     try:
         con.execute("INSTALL spatial; LOAD spatial;")
@@ -48,7 +79,7 @@ def from_gmns(gmns_db, mode="driving", source_db=None):
         link_cols = _cols(con, g, "link")
         same = " AND ST_Equals(r.geom, k.geom)" if "geom" in link_cols else ""
         nlanes = "k.lanes, " if "lanes" in link_cols else ""
-        lvl, src = "", f"lanestyle_src_{uuid.uuid4().hex[:8]}"   # one db instance per file per process:
+        src = f"lanestyle_src_{uuid.uuid4().hex[:8]}"   # one db instance per file per process:
         # a caller's own connection to gmns_db may already hold an attachment, so never reuse a name
         if {"bridge", "tunnel", "layer"} <= link_cols:
             lvl = ", k.bridge, k.tunnel, k.layer"

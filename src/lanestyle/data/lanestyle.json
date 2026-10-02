@@ -1,22 +1,34 @@
 {
   "lanes": {
     "colors": {
-      "bus": "#9db8d9",
-      "bike": "#3f8fc9",
+      "auto": "#a3a3a3",
+      "bus": "#d6336c",
+      "bike": "#1c7ed6",
+      "walk": "#f0cb8c",
+      "groups": {
+        "driving": "#a3a3a3",
+        "driving+walking": "#7fb7a8",
+        "walking": "#f0cb8c",
+        "cycling": "#1c7ed6",
+        "driving+cycling": "#8fa3d6",
+        "walking+cycling": "#a8d48a",
+        "driving+walking+cycling": "#6aa5c4"
+      },
       "clicked": "#e0453a",
       "turns_into": "#149a86",
       "uturn": "#8e44ad"
     },
     "lines": {
-      "divider": {"color": "#e8e8e8", "width_m": 0.15, "dash_m": [3, 9]},
-      "centre": {"color": "#e8e8e8", "width_m": 0.15, "dash_m": null},
-      "edge": {"color": "#6b6b6b", "width_m": 0.10, "dash_m": null}
+      "divider": {"color": "#f4f4f4", "width_m": 0.2, "dash_m": [3, 9]},
+      "centre": {"color": "#f4f4f4", "width_m": 0.2, "dash_m": null},
+      "edge": {"color": "#5a5a5a", "width_m": 0.14, "dash_m": null}
     },
     "junction_trim_m": 1,
     "fillet_m": 0,
-    "line_min_device_px": 1.5,
-    "type_label_zoom": 18,
+    "line_min_device_px": 2,
+    "type_label_zoom": null,
     "default_width_m": 3.25,
+    "width_m_by_use": {"walk": 2.0, "bike": 1.5},
     "casing_m": 0,
     "width_m_zoom": 16
   }

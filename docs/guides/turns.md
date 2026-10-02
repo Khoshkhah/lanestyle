@@ -36,9 +36,10 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {
 
 ## Type labels
 
-Each lane carries a label along its line from `type_label_zoom` (18): the turns that leave it
-(`left + thru`, `right`, `U-turn`, `fork`, `merge`), or `end` where none does. A bus or bike lane
-says its use first (`bus · thru`). `"type_label_zoom": null` turns the labels off.
+Each lane's type is the turns that leave it (`left + thru`, `right`, `U-turn`, `fork`, `merge`), or `end` where
+none does; a bus or bike lane says its use first (`bus · thru`). It is in the **popup** (`lane_type`), not drawn on
+the map: the lanes are coloured by their mode group instead. To draw it along each lane, set `type_label_zoom` to a
+zoom, e.g. `settings={"lanes": {"type_label_zoom": 18}}` (the default is `null`: no labels).
 
 ## The popup
 
