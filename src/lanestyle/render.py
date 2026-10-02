@@ -9,10 +9,18 @@ Design: docs/design/lanestyle_on_roadstyle.md.
 import json
 from pathlib import Path
 
+from lanestyle.frames import frames
 from lanestyle.junctions import junction_fillets
-from lanestyle.lines import lane_lines
+from lanestyle.lines import _band, _group, _paired, lane_lines
 
-_POPUP = ["name", "lane_type", "connects", "highway", "lane_id", "lane_num", "lanes", "use", "modes", "turn", "width_m", "tunnel", "bridge",
+_LEVEL = {"bridge": "bridge", "high": "above ground", "ground": "ground", "low": "tunnel / below ground"}
+def pd_isna(v):
+    import pandas as pd
+
+    return v is None or bool(pd.isna(v))
+
+
+_POPUP = ["name", "lane_type", "connects", "highway", "kind", "level", "footway", "edge_ref", "along", "footpaths", "twin", "lane_id", "lane_num", "lanes", "use", "modes", "turn", "width_m", "tunnel", "bridge",
           "layer", "turns_in", "turns_out", "from_lane", "to_lane", "link_id", "reverse_link_id", "osm_id", "from_node_id",
           "to_node_id"]                       # the ones present and not null show
 _MARKED = ("auto", "bus", "bike", "walk")       # the mode groups: each has its colour and a legend row
@@ -34,6 +42,8 @@ def _colour_groups(g, s):
     if "modes" in g and g["modes"].replace("", None).dropna().nunique() > 1:
         key = g["modes"].map(lambda m: "+".join(x for x in _GROUP_ORDER if x in m.split(",")) or "driving")
         lane_beyond = (g["lane_num"] > g["lanes"].fillna(0)) if {"lane_num", "lanes"} <= set(g.columns) else False
+        if "connector" in g:       # a connector has no lane number: one that joins bike lanes (it takes its lane's use) is a bike lane's too
+            lane_beyond = lane_beyond | g["connector"].fillna(False).astype(bool)
         key = key.where(~(g["use"] == "bus"), "bus").where(~((g["use"] == "bike") & lane_beyond), "bike")
         g["mode_group"] = key
         colours = {k: col["groups"].get(k, col["auto"]) for k in set(key)} | {"bus": col["bus"], "bike": col["bike"]}
@@ -80,7 +90,7 @@ _LINES_JS = """<script>
     geometry: {type: Array.isArray(c[0][0]) ? "MultiLineString" : "LineString", coordinates: c}}))};
   // after the band's last fill layer (roadstyle's levels and looks: three bands, a tunnel is a road of the low band,
   // its dashes the first of these that exists; a bridge's look layer is drawn after the high band)
-  const AFTER = {low: ["roads-low-fill-pat", "roads-low-fill"], ground: ["roads-fill"], high: ["roads-high-fill"],
+  const AFTER = {low: ["roads-low-fill-pat", "roads-low-fill"], ground: ["roads-arrows", "roads-fill"], high: ["roads-high-fill"],
                  bridge: ["roads-bridge-fill"]};
   const px = z => 512 * Math.pow(2, z) / 40075016.686;
   function add(){
@@ -93,17 +103,38 @@ _LINES_JS = """<script>
       const i = ids.indexOf(after);
       for (const t in S) {
         const s = S[t];
-        if (!s) continue;
+        if (!s || (t === "bridge_edge" && b !== "bridge")) continue;
         const w = ["interpolate", ["exponential", 2], ["zoom"]];
         for (let z = Z; z <= 22; z++) w.push(z, ["max", ["*", ["get", "k"], px(z)], MIN]);
         const paint = {"line-color": s.color, "line-width": w,
-                       "line-opacity": ["interpolate", ["linear"], ["zoom"], Z, 0.35, Z + 2, 1]};
+                       "line-opacity": t === "bridge_edge" ? 1 : ["interpolate", ["linear"], ["zoom"], Z, 0.35, Z + 2, 1]};
         if (s.dash_m) paint["line-dasharray"] = s.dash_m.map(d => d / s.width_m);
         map.addLayer({id: "lane-lines-" + b + "-" + t, type: "line", source: "lane-lines", minzoom: Z,
                       filter: ["all", ["==", ["get", "t"], t], ["==", ["get", "b"], b]],
                       layout: {"line-cap": "butt", "line-join": "round"}, paint: paint}, ids[i + 1]);
       }
     }
+  }
+  if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
+
+
+# a marked crossing: white stripes on the road. The crossing's own lane stays a footpath under the road (by road class, as
+# every footway); the stripes are polygons in metres (_zebra_stripes), drawn right over the ground roads
+_ZEBRA_JS = """<script>
+(function(){
+  const Z = __ZEBRA__, S = __STYLE__, ZOOM = __ZOOM__;
+  function add(){
+    if (map.getSource("zebra")) return;
+    map.addSource("zebra", {type: "geojson", data: Z});
+    const ids = map.getStyle().layers.map(l => l.id);
+    const after = ["roads-arrows", "roads-fill"].find(id => ids.includes(id));      // above the lane arrows: none lies on the stripes
+    if (!after) return;
+    map.addLayer({id: "zebra", type: "fill", source: "zebra", minzoom: ZOOM,
+                  paint: {"fill-color": S.color, "fill-antialias": true,
+                          "fill-opacity": ["interpolate", ["linear"], ["zoom"], ZOOM, 0.5, ZOOM + 1.5, 1]}}, ids[ids.indexOf(after) + 1]);
   }
   if (map.isStyleLoaded()) add(); else map.once("load", add);
 })();
@@ -133,10 +164,69 @@ _CLASSES = ("motorway", "trunk", "primary", "secondary", "tertiary", "unclassifi
 # (a faded fill with dashes, a deck casing), drawn whole by the one rule; the class dashes (footway, path ...) stay,
 # coloured by mode group.
 _ROADSTYLE = {"config": {"tunnel_opacity_scale": 0.75, "tunnel_gap_shade": 0.15, "tunnel_dash_shade": 0.3,
-                         "tunnel_fill_dash_color": "rgba(255,255,255,0.35)", "bridge_casing_m": 0.3, "bridge_casing_px": 1.5},
+                         "tunnel_fill_dash_color": "rgba(255,255,255,0.35)", "bridge_casing_m": 0, "bridge_casing_px": 0},
               # one grey per class, and no class dashes: a footway, path, cycleway or track lane is a solid strip like any lane
               "palettes": {name: {c: {"fill": "#a3a3a3", "dash": None} for c in _CLASSES}
                            for name in ("mono", "carto", "highsat")}}
+
+
+def _demote_crossings(g, s):
+    """OSM tags a whole way ``footway=crossing`` where only its end crosses the road (``1342546079``: 173 m, 2 % on a road; its last
+    4 m are the crossing). A crossing link that is longer than ``crossing_max_m`` and has under ``crossing_min_on`` of its length on
+    the road surface of its level is drawn as a footway (``footway`` None, ``kind`` says why). The data keeps OSM's tag."""
+    import pandas as pd
+    import shapely
+
+    mx, lo = float(s.get("crossing_max_m") or 0), float(s.get("crossing_min_on") or 0)
+    if not mx or "footway" not in g:
+        return
+    cx = (g["footway"] == "crossing") & (g["use"] == "walk")
+    if "connector" in g:
+        cx &= ~g["connector"].fillna(False).astype(bool)
+    if not cx.any():
+        return
+    u = g.to_crs(g.estimate_utm_crs())
+    band = [_group(r) for r in g.itertuples(index=False)]
+    road = [i for i in range(len(g)) if g["use"].iloc[i] != "walk" and not (("connector" in g) and g["connector"].iloc[i])]
+    surf = [u.geometry.iloc[i].buffer(float(g["width_m"].iloc[i] if g["width_m"].iloc[i] == g["width_m"].iloc[i] else 3.0) / 2) for i in road]
+    tree = shapely.STRtree(surf)
+    for i in g.index[cx]:
+        k = g.index.get_loc(i)
+        ln = u.geometry.iloc[k]
+        if ln.length <= mx:                                                    # a short crossing stays a crosswalk (matched to a road or not: a crossing of a side street runs along the main road)
+            continue
+        if "along_link_id" in g and pd.notna(g["along_link_id"].iloc[k]):      # long, and duckOSM matched it to a road it runs along: a footpath tagged a crossing by mistake
+            g.loc[i, "footway"] = None
+            g.loc[i, "demoted"] = f"footway (OSM tags it a crossing; it runs along a road for most of its {ln.length:.0f} m)"
+            continue
+        hit = [surf[j] for j in tree.query(ln.buffer(1)) if band[road[j]] == band[k]]
+        on = shapely.union_all(hit).intersection(ln).length / ln.length if hit else 0.0
+        if on < lo:
+            g.loc[i, "footway"] = None
+            g.loc[i, "demoted"] = f"footway (OSM tags it a crossing; {on:.0%} of its {ln.length:.0f} m is on a road)"
+
+
+def _footpaths_on_roads(g, share=0.6):
+    """Indices (row positions) of the footpaths that lie mostly on a road of their level: mapped on the carriageway, a road is drawn above a footway by class and would hide
+    them. Not a crossing (that is drawn under the road with its zebra on it) and not a connector."""
+    import shapely
+
+    walk = [i for i in range(len(g)) if g["use"].iloc[i] == "walk" and not (("footway" in g) and g["footway"].iloc[i] == "crossing")
+            and not (("connector" in g) and bool(g["connector"].iloc[i]))]
+    if not walk:
+        return []
+    u = g.to_crs(g.estimate_utm_crs())
+    band = [_group(r) for r in g.itertuples(index=False)]
+    road = [i for i in range(len(g)) if g["use"].iloc[i] != "walk" and not (("connector" in g) and bool(g["connector"].iloc[i]))]
+    surf = [u.geometry.iloc[i].buffer(float(g["width_m"].iloc[i]) / 2, cap_style="round") for i in road]
+    tree = shapely.STRtree(surf)
+    out = []
+    for i in walk:
+        p = u.geometry.iloc[i].buffer(float(g["width_m"].iloc[i]) / 2, cap_style="round")
+        hit = [surf[j] for j in tree.query(p) if band[road[j]] == band[i]]
+        if hit and p.area and shapely.union_all(hit).intersection(p).area / p.area >= share:
+            out.append(i)
+    return out
 
 
 def _break_twins(g):
@@ -148,8 +238,9 @@ def _break_twins(g):
 
     key = lambda c: (round(c[0], 6), round(c[1], 6))
     seen, geoms = set(), list(g.geometry)
+    walk = (g["use"] == "walk").tolist() if "use" in g else [False] * len(geoms)
     for i, ln in enumerate(geoms):
-        if ln is None or ln.geom_type != "LineString":
+        if ln is None or ln.geom_type != "LineString" or walk[i]:      # a footway's twins are drawn as they are
             continue
         cs = list(ln.coords)
         a, z = key(cs[0]), key(cs[-1])
@@ -252,11 +343,76 @@ _FILLETS_JS = """<script>
       if (!before) continue;
       map.addLayer({id: "lane-fillets-" + b, type: "fill", source: "lane-fillets",
                     filter: ["==", ["get", "b"], b],
-                    paint: {"fill-color": Object.keys(cols).length ? color : "#888888",
-                            "fill-opacity": 1}}, before);
+                    paint: {"fill-color": ["case", ["has", "c"], ["get", "c"], Object.keys(cols).length ? color : "#888888"],
+                            "fill-opacity": b === "low" ? ["case", ["has", "c"], 0.72, 1] : 1}}, before);
     }
+    // a frame gap (a sidewalk's verge) in a tunnel: the tunnel look, a light hatch over the faded fill
+    const px = new Uint8Array(8 * 8 * 4);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if ((x + y) % 8 < 2) px.set([255, 255, 255, 110], (y * 8 + x) * 4);
+    if (!map.hasImage("lane-hatch")) map.addImage("lane-hatch", {width: 8, height: 8, data: px});
+    const low = BEFORE.low.find(id => ids.includes(id));
+    if (low) map.addLayer({id: "lane-fillets-low-pat", type: "fill", source: "lane-fillets",
+                           filter: ["all", ["==", ["get", "b"], "low"], ["has", "c"]], paint: {"fill-pattern": "lane-hatch"}}, low);
+    const gapLayers = ["low", "ground", "high", "bridge"].map(b => "lane-fillets-" + b).filter(id => map.getLayer(id));
+    map.on("click", gapLayers, e => {
+      const f = (e.features || []).find(f => f.properties && f.properties.info);
+      if (!f) return;
+      new maplibregl.Popup({closeButton: true, className: "lane-gap"}).setLngLat(e.lngLat).setText(f.properties.info).addTo(map);
+      setTimeout(() => document.querySelectorAll(".maplibregl-popup:not(.lane-gap)").forEach(p => p.remove()), 60);   // the road beside it opens its own: this one is the gap's
+    });
+    map.on("mousemove", gapLayers, e => { map.getCanvas().style.cursor = (e.features || []).some(f => f.properties && f.properties.info) ? "pointer" : ""; });
+    map.on("mouseleave", gapLayers, () => { map.getCanvas().style.cursor = ""; });
   }
   if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
+
+# tunnel lanes are drawn faded (roadstyle: the fill at 72 %) over a dark casing, and every lane ends round: the ring of one lane's end shows through the
+# next lane's faded fill at every joint. An opaque body in the land colour under the fill (above the casing) hides those rings; the casing beyond the fill's width stays.
+_LOWBODY_JS = """<script>
+(function(){
+  const F = __BODY__;
+  function add(){
+    if (map.getSource("lane-low-body")) return;
+    const before = ["roads-low-fill"].find(id => map.getLayer(id));
+    if (!before) return;
+    map.addSource("lane-low-body", {type: "geojson", data: F});
+    map.addLayer({id: "lane-low-body", type: "fill", source: "lane-low-body", paint: {"fill-color": "__LAND__", "fill-opacity": 1}}, before);
+  }
+  if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
+
+
+def _low_body(g, s):
+    """GeoJSON polygons of every lane of the low band (tunnels), as wide as the lane, round ends: the base under their faded fill (``_LOWBODY_JS``). None without any."""
+    import geopandas as gpd
+
+    low = [i for i, r in enumerate(g.itertuples(index=False)) if _band(r) == "low"]
+    if not low:
+        return None
+    u = g.to_crs(g.estimate_utm_crs())
+    polys = [u.geometry.iloc[i].buffer(float(g["width_m"].iloc[i]) / 2, cap_style="round").simplify(0.03) for i in low]
+    geo = gpd.GeoSeries(polys, crs=u.crs).to_crs(4326)
+    rnd = lambda ring: [[round(x, 7), round(y, 7)] for x, y in ring]  # noqa: E731
+    return {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [rnd(p_.exterior.coords)] + [rnd(h.coords) for h in p_.interiors]}}
+        for p_ in geo if p_.geom_type == "Polygon" and not p_.is_empty]}
+
+
+# a connector is not a road to click: roadstyle's click and hover pick from what the map renders, so connectors are left out of that answer (the lanes below them are picked instead)
+_NOPICK_JS = """<script>
+(function(){
+  function patch(){
+    if (map.__lanePatched) return;
+    map.__lanePatched = true;
+    const q = map.queryRenderedFeatures.bind(map);
+    map.queryRenderedFeatures = (a, b) => q(a, b).filter(f => !(f.layer && /^roads-/.test(f.layer.id) && f.properties &&
+                                                                (f.properties.connector === true || f.properties.connector === "true")));
+  }
+  if (typeof map !== "undefined") patch();
 })();
 </script>
 """
@@ -297,7 +453,100 @@ def _widths(g, s):
     return w.fillna(default)
 
 
-def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
+def _zebra_stripes(g, cr, st):
+    """The zebra stripes from duckOSM's crossing table, ``(rings, footprint)``: the stripes as lon/lat polygon rings and the zebras'
+    rectangles as one lon/lat geometry (the lane lines stop there). ``cr``: :func:`lanestyle.read_crossings`.
+
+    One rectangle per crossing, the table's ``crossing.geom``: ``width`` along the road, ``length`` across the whole road it crosses.
+    It is cut into stripes across its length, ``stripe_m`` thick, ``stripe_m + gap_m`` apart (the row centred), each as long as the
+    rectangle is wide: parallel to the lanes, one straight band. Then a real clip: each stripe is intersected with the true shape of
+    the lanes the crossing names in ``lane_crossing`` (each lane's line, from one rectangle-width before its ``start_lr`` to one
+    after its ``end_lr``, ``width_m`` wide): the paint is only on those lanes, and a lane's edge is the stripe's edge. The extra
+    rectangle-width on each side of a lane's stretch means the clip only ever cuts across the road, never along it, so a stripe
+    that stays is as long as the zebra is wide. Nothing else is done to the stripes: no projection, no merging, no shrinking."""
+    import math
+
+    import shapely
+    from shapely import wkt as _w
+    from shapely.geometry import Polygon
+
+    if cr is None or not len(cr) or "painted" not in cr or "cgeom" not in cr:
+        return [], None
+    cr = cr[cr["painted"].fillna(False).astype(bool)]
+    if not len(cr):
+        return [], None
+    import geopandas as gpd
+
+    from shapely.ops import substring
+
+    u = g.estimate_utm_crs()
+    geom = dict(zip(g["lane_id"], g.to_crs(u).geometry))
+    wid = dict(zip(g["lane_id"], g["width_m"]))
+    pitch, thick = st["stripe_m"] + st["gap_m"], st["stripe_m"]
+    stripes, foot = [], []
+    # every road lane, to find the ones that cross the zebra's road: a zebra across a side road does not run onto the carriageway it joins
+    others = [(lid, ln) for lid, ln, use in zip(g["lane_id"], g.to_crs(u).geometry, g["use"]) if use != "walk" and ln is not None and ln.geom_type == "LineString"]
+    other_tree = shapely.STRtree([ln for _, ln in others])
+    for _cid, grp in cr.groupby("crossing_id"):
+        rect = gpd.GeoSeries([_w.loads(grp["cgeom"].iloc[0])], crs=4326).to_crs(u).iloc[0]
+        if rect.geom_type != "Polygon":
+            continue
+        (x0, y0), (x1, y1), _, (x3, y3) = list(rect.exterior.coords)[:4]
+        length = math.hypot(x1 - x0, y1 - y0)                       # across the road: the rectangle's first side
+        wx, wy = x3 - x0, y3 - y0                                   # along the road: the second side, as long as the zebra is wide
+        along = math.hypot(wx, wy)
+        if length < thick or along < 0.5:
+            continue
+        dx, dy = (x1 - x0) / length, (y1 - y0) / length
+        lanes = []                                                  # the true shape of each named lane, a rectangle-width beyond its stretch
+        for r in grp.itertuples():
+            ln = geom.get(r.lane_id)
+            if ln is None or ln.geom_type != "LineString":
+                continue
+            sub = substring(ln, max(r.start_lr - along, 0.0), min(r.end_lr + along, ln.length))
+            if sub.geom_type == "LineString" and sub.length > 0.3:
+                lanes.append(sub.buffer(float(wid[r.lane_id]) / 2, cap_style="flat", join_style="mitre", mitre_limit=2.0))
+        if not lanes:
+            continue
+        # the lanes of a road meet at joints that are not exact (a flat end against the next lane's flat start): close seams under 0.6 m, which
+        # leaves the outer border where it is, so consecutive lanes clip as the one road they are
+        road = shapely.union_all(lanes).buffer(0.3, join_style="mitre", mitre_limit=2.0).buffer(-0.3, join_style="mitre", mitre_limit=2.0)
+        ax, ay = wx / along, wy / along                           # the zebra's road direction
+        crossing_roads = []
+        for k in other_tree.query(rect):
+            lid, ln = others[k]
+            if lid in set(grp["lane_id"]):
+                continue
+            p = ln.interpolate(ln.project(rect.centroid))
+            q0, q1 = ln.interpolate(max(ln.project(p) - 0.5, 0)), ln.interpolate(min(ln.project(p) + 0.5, ln.length))
+            nn = math.hypot(q1.x - q0.x, q1.y - q0.y)
+            if nn and abs(((q1.x - q0.x) * ax + (q1.y - q0.y) * ay) / nn) < 0.5:              # runs across the zebra's road, not along it
+                crossing_roads.append(ln.buffer(float(wid[lid]) / 2, cap_style="flat"))
+        if crossing_roads:
+            road = road.difference(shapely.union_all(crossing_roads))
+        n = int((length - thick) // pitch) + 1
+        first = (length - ((n - 1) * pitch + thick)) / 2
+        for i in range(n):
+            t0 = first + i * pitch
+            a, b = (x0 + dx * t0, y0 + dy * t0), (x0 + dx * (t0 + thick), y0 + dy * (t0 + thick))
+            on = Polygon([a, b, (b[0] + wx, b[1] + wy), (a[0] + wx, a[1] + wy)]).intersection(road)
+            stripes += [q for q in getattr(on, "geoms", [on]) if q.geom_type == "Polygon" and q.area > 0.02]
+        on = rect.intersection(road)
+        if not on.is_empty:
+            foot.append(on)
+    if not stripes:
+        return [], None
+    back = gpd.GeoSeries(stripes, crs=u).to_crs(4326)
+    footprint = gpd.GeoSeries([shapely.union_all(foot)], crs=u).to_crs(4326).iloc[0] if foot else None
+    return [[[round(x, 7), round(y, 7)] for x, y in p.exterior.coords] for p in back], footprint
+
+
+def _roads_only(g):
+    """The lanes of links that have a road class: a link with none is no road (a ferry in the walking network, a way with no ``highway`` tag)."""
+    return g[g["highway"].notna()] if "highway" in g and g["highway"].isna().any() else g
+
+
+def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=None, street_view=False, street_view_key=None, **kwargs):
     """Draw a lane table (see :func:`lanestyle.from_gmns` for the columns) as one roadstyle map and
     return roadstyle's ``WebMap`` (``.save(path)``, ``.html``).
 
@@ -308,20 +557,105 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     ``to_lane``, optional ``type``) makes a lane clickable: it turns red and the lanes it leads into
     green, U-turns purple. Lane lines (dividers, centre and edge lines, styled per type under
     ``lines``) come from ``link_id`` / ``lane_num`` (+ ``reverse_link_id``, node ids; see
-    :func:`lanestyle.lines.lane_lines`). ``settings``: roadstyle settings, plus a ``"lanes"`` key
-    for lanestyle's own (``data/lanestyle.json``). Other keywords go to ``roadstyle.render_edges``."""
+    :func:`lanestyle.lines.lane_lines`). ``crossings``: duckOSM's crossing tables (:func:`lanestyle.read_crossings`, default
+    ``lanes.attrs["crossings"]``), painted as zebra stripes along the lanes they name. ``settings``: roadstyle settings, plus a ``"lanes"`` key
+    for lanestyle's own (``data/lanestyle.json``). ``street_view=True``: roadstyle's map + Google Street View page (a click on a lane shows the street
+    at that point; ``street_view_key``: a Google Maps JavaScript API key for a real panorama, none for the keyless embed; ``panel_width`` 20-80 %).
+    Other keywords go to ``roadstyle.render_edges``."""
     import roadstyle as rs
 
     s = lane_settings(settings)
     g = lanes.copy()
+    g = _roads_only(g)
     g["use"] = g["use"].fillna("auto") if "use" in g else "auto"
     g["width_m"] = _widths(g, s)
     # every lane is coloured by its mode group (car, bus, bike, walk), not by its road's class; a use that has no
     # group of its own is a car lane's colour
+    g["zebra"] = (g["footway"] == "crossing") if "footway" in g else False      # a crossing lane lies under the road, no lines of its own
+    g["demoted"] = None
+    _demote_crossings(g, s)                      # a "crossing" that is mostly no crossing is a footway
     colour_col, palette_colors, rows = _colour_groups(g, s)
-    opts = dict(color_options={"Road class": {}, "Lane use": {"color_by": colour_col, "colors": palette_colors}},
+    if "footway" in g and (g["footway"] == "crossing").any():      # a crosswalk is not a footway: its own, lighter colour and legend row
+        if colour_col == "use":
+            g["mode_group"], colour_col = g["use"], "mode_group"
+        g.loc[g["footway"] == "crossing", colour_col] = "crossing"
+        palette_colors = {**palette_colors, "crossing": s["colors"]["crossing"]}
+        rows = [*rows, ("crosswalks", s["colors"]["crossing"])]
+    if "footway" in g and (g["footway"] == "sidewalk").any():      # a mapped sidewalk: its own colour and legend row
+        if colour_col == "use":
+            g["mode_group"], colour_col = g["use"], "mode_group"
+        g.loc[g["footway"] == "sidewalk", colour_col] = "sidewalk"
+        palette_colors = {**palette_colors, "sidewalk": s["colors"]["sidewalk"]}
+        rows = [*rows, ("sidewalks", s["colors"]["sidewalk"])]
+    if "use" in g:      # a footway's two links are one strip people walk both ways: roadstyle must not pair them as a two-way road's lanes
+        g["directed"] = g["use"] != "walk"
+    on_road = _footpaths_on_roads(g)
+    if "connector" in g and g["connector"].fillna(False).astype(bool).any():
+        # a connector fills the gap between two lanes: drawn below the lanes of its level (roadstyle's per-edge order), so it never sits on a lane of another colour
+        # and a connector that goes straight on (thru, merge, fork, a continued lane) above the ones that turn (left, right, U-turn): -250 over -300
+        kind = dict(zip(zip(turns["from_lane"].astype(str), turns["to_lane"].astype(str)), turns["type"])) if turns is not None and len(turns) and "type" in turns else {}
+        frm = g["from_lane"] if "from_lane" in g else [None] * len(g)
+        to = g["to_lane"] if "to_lane" in g else [None] * len(g)
+        g["draw_order"] = [(-300.0 if kind.get((str(a), str(b))) in ("left", "right", "uturn") else -250.0) if c else float("nan")
+                           for c, a, b in zip(g["connector"].fillna(False).astype(bool), frm, to)]
+    lowgrp = [_group(r) for r in g.itertuples(index=False)]
+    if any(x.startswith("low@") for x in lowgrp):
+        # layers below ground are one roadstyle band, drawn by road class: layer -1 must lie over layer -2 over -3 (colour and casing). Order = layer * 90 + a rank inside the
+        # layer (its connectors under its lanes, straight ones above turns, a road class by roadstyle's z order, a footpath on a road above it): the ranks span under 90
+        from roadstyle.render_web import ROAD_Z
+
+        if "draw_order" not in g:
+            g["draw_order"] = float("nan")
+        kind_t = dict(zip(zip(turns["from_lane"].astype(str), turns["to_lane"].astype(str)), turns["type"])) if turns is not None and len(turns) and "type" in turns else {}
+        onr = set(on_road)
+        for i, gp in enumerate(lowgrp):
+            if not gp.startswith("low@"):
+                continue
+            if "connector" in g and bool(g["connector"].iloc[i]):
+                turn = kind_t.get((str(g["from_lane"].iloc[i]), str(g["to_lane"].iloc[i]))) in ("left", "right", "uturn")
+                sub = -30.0 if turn else -20.0
+            else:
+                hw = str(g["highway"].iloc[i]).split(";")[0].removesuffix("_link") if "highway" in g else ""
+                sub = float(ROAD_Z.get(hw, 4)) + (15.0 if i in onr else 0.0)
+            g.iloc[i, g.columns.get_loc("draw_order")] = int(gp[4:]) * 90 + sub
+    if on_road:           # a footpath mapped on a carriageway is drawn above it (roadstyle's per-edge order), else the road hides it
+        if "draw_order" not in g:
+            g["draw_order"] = float("nan")
+        keep = [i for i in on_road if not lowgrp[i].startswith("low@")]
+        g.iloc[keep, g.columns.get_loc("draw_order")] = 100.0
+    opts = dict(directed_col="directed" if "use" in g else None, order_col="draw_order" if "draw_order" in g else None, color_options={"Road class": {}, "Lane use": {"color_by": colour_col, "colors": palette_colors}},
                 color_active="Lane use")
     conn = g["connector"].fillna(False).astype(bool) if "connector" in g else None
+    if "footway" in g:             # what a footway is, in words: a crosswalk is no "footway" (OSM tags both: highway=footway + footway=crossing)
+        cx = g["crossing"] if "crossing" in g else None
+        g["kind"] = [("crosswalk" + (f" ({c})" if isinstance(c, str) and c else "")) if f == "crossing" else ("sidewalk" if f == "sidewalk" else d)
+                     for f, c, d in zip(g["footway"], cx if cx is not None else [None] * len(g), g["demoted"])]
+    if "along_link_id" in g and "edge_ref" in g and g["along_link_id"].notna().any():
+        # the match, as the popup shows it: a footpath names the road it runs along (its route), a road the footpaths that run along it
+        first = {}
+        for lk, er in zip(g["link_id"], g["edge_ref"]):
+            first.setdefault(lk, er)
+        routes = g["along_links"] if "along_links" in g else [None] * len(g)
+        g["along"] = [None if pd_isna(a) else f"{first.get(a, a)} ({k}" + (f", route of {len(rt)} roads" if isinstance(rt, list) and len(rt) > 1 else "") + ")"
+                      for a, k, rt in zip(g["along_link_id"], g["along_kind"] if "along_kind" in g else [""] * len(g), routes)]
+        onroad = {}
+        for lk, rt, a in zip(g["link_id"], routes, g["along_link_id"]):
+            for r_ in (rt if isinstance(rt, list) else ([] if pd_isna(a) else [a])):
+                onroad.setdefault(r_, set()).add(first.get(lk, lk))
+        g["footpaths"] = [", ".join(sorted(onroad[lk])[:5]) + (f" … ({len(onroad[lk])})" if len(onroad.get(lk, ())) > 5 else "") if lk in onroad else None
+                          for lk in g["link_id"]]
+    g["level"] = [_LEVEL[_band(r)] for r in g.itertuples()]    # always in the popup: "ground" says it is no bridge
+    import pandas as pd
+
+    if {"link_id", "lane_num"} <= set(g.columns):        # the link's twin: its other direction (the same line) or, for a road mapped as two one-way
+        nc = g[~conn] if conn is not None else g         # ways, the one placed together with it; None for a one-way road with no twin
+        part = _paired(nc.to_crs(nc.estimate_utm_crs())) if len(nc) else {}
+        rev = g["reverse_link_id"] if "reverse_link_id" in g else None
+        ref = dict(zip(g["link_id"], g["edge_ref"])) if "edge_ref" in g else {}        # name a twin by its edge_ref where there is one
+        name = lambda k: ref.get(k) if isinstance(ref.get(k), str) else k                # noqa: E731
+        g["twin"] = [f"{name(rv)} (reverse: the same line)" if rv is not None and not pd.isna(rv)
+                     else (f"{name(part[lk])} (paired: two one-way ways placed together)" if lk in part else None)
+                     for lk, rv in zip(g["link_id"], rev if rev is not None else [None] * len(g))]
     walk = g["use"] == "walk"                            # a footpath is walked both ways: no arrow
     if conn is not None:                                 # arrows on lanes, not on connectors
         g["oneway"] = ~conn & ~walk
@@ -351,9 +685,19 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
     if turns is not None and len(turns):                 # how many lanes lead in / out, for the popup
         g["turns_in"] = g["lane_id"].map(turns.groupby(turns["to_lane"].astype(str)).size()).fillna(0).astype(int)
         g["turns_out"] = g["lane_id"].map(turns.groupby(turns["from_lane"].astype(str)).size()).fillna(0).astype(int)
-    lines = lane_lines(g, s)
+    cr = crossings if crossings is not None else lanes.attrs.get("crossings")
+    zebra, zfoot = _zebra_stripes(g, cr, s["zebra"]) if s.get("zebra") else ([], None)
+    gaps, frame, rims = frames(g, s)             # a road and its sidewalk within frame_gap_m: one frame
+    lines = lane_lines(g, s, avoid=zfoot, frame=frame, frame_edges=rims)
     fillets = junction_fillets(g, s)             # connectors included: their corners are the usual gaps
-    m = rs.render_edges(
+    if gaps:
+        fillets = gaps if not fillets else {"type": "FeatureCollection", "features": fillets["features"] + gaps["features"]}
+    draw = rs.render_edges
+    if street_view_key and not street_view:      # the map's own Street View window: with a key it offers the real panorama (Linked)
+        kwargs = {"street_view_key": street_view_key, **kwargs}
+    if street_view:       # roadstyle's map + Google Street View page: click a lane, see the street; a Maps JavaScript API key makes it a real panorama
+        draw = lambda *a, **k: rs.render_street_view(*a, street_view_key=street_view_key, **k)          # noqa: E731
+    m = draw(
         _break_twins(g), palette=palette,
         width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=s["casing_m"],
         road_popup=[c for c in _POPUP if c in g.columns],
@@ -361,6 +705,11 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         settings=_merge(_ROADSTYLE, {k: v for k, v in (settings or {}).items() if k != "lanes"}),
         **opts)
     js = ""
+    if conn is not None and conn.any() and not s.get("connectors_clickable"):
+        js += _NOPICK_JS
+    body = _low_body(g, s) if s.get("tunnel_body") else None
+    if body:
+        js += _LOWBODY_JS.replace("__BODY__", json.dumps(body, separators=(",", ":"))).replace("__LAND__", s["tunnel_body"])
     if fillets:
         js += _FILLETS_JS.replace("__FILLETS__", json.dumps(fillets, separators=(",", ":")))
     if rows:                                             # the mode groups' colours as rows in the Roads box
@@ -369,6 +718,12 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs):
         js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
                .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"]))
                .replace("__MIN_DEVICE_PX__", json.dumps(s.get("line_min_device_px", 1))))
+    # the zebra goes above the lane arrows (none on the stripes); the lane lines stop at its footprint
+    if zebra:
+        fc = {"type": "FeatureCollection", "features": [
+            {"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [ring]}} for ring in zebra]}
+        js += (_ZEBRA_JS.replace("__ZEBRA__", json.dumps(fc, separators=(",", ":"))).replace("__STYLE__", json.dumps(s["zebra"]))
+               .replace("__ZOOM__", json.dumps(s["width_m_zoom"])))
     if turns is not None and len(turns):
         via = {}                                         # (from lane, to lane) -> its connector
         if conn is not None and conn.any():

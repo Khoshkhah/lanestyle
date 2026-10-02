@@ -5,6 +5,8 @@
       "bus": "#d6336c",
       "bike": "#1c7ed6",
       "walk": "#f0cb8c",
+    "crossing": "#f8e7bf",
+      "sidewalk": "#e6b9a6",
       "groups": {
         "driving": "#a3a3a3",
         "driving+walking": "#7fb7a8",
@@ -21,10 +23,19 @@
     "lines": {
       "divider": {"color": "#f4f4f4", "width_m": 0.2, "dash_m": [3, 9]},
       "centre": {"color": "#f4f4f4", "width_m": 0.2, "dash_m": null},
+      "bridge_edge": {"color": "#1a1a1a", "width_m": 0.3, "dash_m": null},
       "edge": {"color": "#5a5a5a", "width_m": 0.14, "dash_m": null}
     },
+    "zebra": {"color": "#f7f7f2", "width_m": 3.0, "stripe_m": 0.5, "gap_m": 0.5},
     "junction_trim_m": 1,
     "fillet_m": 0,
+    "frame_gap_m": 2.0,
+    "connectors_clickable": false,
+    "tunnel_body": "#f6f4ee",
+    "crossing_max_m": 10,
+    "crossing_min_on": 0.2,
+    "frame_reach_m": 8.0,
+    "frame_casing": false,
     "line_min_device_px": 2,
     "type_label_zoom": null,
     "default_width_m": 3.25,

@@ -1,3 +1,4 @@
+import pytest
 """lanestyle: the GMNS reader (from_gmns) and the roadstyle engine (render_lanes)."""
 import json
 import sys
@@ -97,7 +98,7 @@ def test_write_serve_index_html_does_not_loop(tmp_path):
 
 def test_lane_lines_types(tmp_path):
     """Link 1 (2 lanes) and link 3 are one two-way road: one divider, one centre line (drawn by the
-    smaller id, link 3), edges on the outside; link 2 is one-way: edges on both sides."""
+    smaller id, link 3), edges on the outside; link 2 is a one-way bridge: its edges are `bridge_edge`."""
     from lanestyle.lines import lane_lines
 
     gmns, src = _dbs(tmp_path)
@@ -105,7 +106,7 @@ def test_lane_lines_types(tmp_path):
     lanes["width_m"] = lanes["width_m"].fillna(3.25)
     fc = lane_lines(lanes, ls.lane_settings())
     kinds = [f["properties"]["t"] for f in fc["features"]]
-    assert sorted(kinds) == ["centre", "divider", "edge", "edge", "edge", "edge"]
+    assert sorted(kinds) == ["bridge_edge", "bridge_edge", "centre", "divider", "edge", "edge"]
     assert {f["properties"]["b"] for f in fc["features"]} == {"ground", "bridge"}   # link 2 is a bridge
 
 
@@ -304,6 +305,182 @@ def test_modes_add_only_the_footpaths_not_the_roads_walked_on(tmp_path):
     assert set(ls.from_gmns(gmns)[0].lane_id) == {"1_1", "1_2", "2_1", "3_1"}
 
 
+def test_modes_skip_the_other_direction_of_a_road_walked_on(tmp_path):
+    """The walking network has a link for the way a one-way road is not driven (here 6, the reverse of road 2): the same
+    OSM way as the driving link, so not a footpath of its own."""
+    gmns, _ = _with_walking(tmp_path)
+    con = duckdb.connect(str(gmns))
+    con.execute("LOAD spatial")
+    for sch in ("driving", "walking"):
+        con.execute(f"ALTER TABLE gmns_{sch}.link ADD COLUMN osm_id BIGINT")
+    con.execute("UPDATE gmns_driving.link SET osm_id = link_id + 900; UPDATE gmns_walking.link SET osm_id = link_id + 900")
+    con.execute("INSERT INTO gmns_walking.link VALUES (6,'Bridge Rd','tertiary',12,11,902)")
+    con.execute("INSERT INTO gmns_walking.lane VALUES ('6_1',6,1,'walk',NULL,NULL,ST_GeomFromText('LINESTRING(18.01 59.311, 18.00 59.311)'))")
+    con.close()
+    lanes, _ = ls.from_gmns(gmns, modes=("driving", "walking"))
+    assert "6_1" not in set(lanes.lane_id) and "5_1" in set(lanes.lane_id)
+
+
+def test_footpaths_are_one_surface_with_one_outline_and_no_lines_inside():
+    """Two footpaths crossing (each a strip, one per direction, on top of each other): no centre or divider line, no
+    edge line through the crossing, just the outline of the union; a road's surface cuts it."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.lines import lane_lines
+
+    lines = [("w1", 1, "walk", [(18.000, 59.3), (18.001, 59.3)]), ("w2", 2, "walk", [(18.001, 59.3), (18.000, 59.3)]),
+             ("w3", 3, "walk", [(18.0005, 59.2999), (18.0005, 59.3001)])]
+    lanes = gpd.GeoDataFrame({"lane_id": [l[0] for l in lines], "link_id": [l[1] for l in lines], "lane_num": 1, "use": "walk",
+                              "width_m": 2.0}, geometry=[LineString(l[3]) for l in lines], crs=4326)
+    fc = lane_lines(lanes, ls.lane_settings())
+    assert {f["properties"]["t"] for f in fc["features"]} == {"edge"}                 # no centre line, no divider
+    assert len(fc["features"]) == 1                                                   # the outline of the union is one line
+    lanes.loc[2, "use"] = "auto"                                                      # as a road, the same strip cuts the outline
+    assert {f["properties"]["t"] for f in lane_lines(lanes, ls.lane_settings())["features"]} >= {"edge"}
+
+
+def test_the_popup_always_says_the_level(tmp_path):
+    """A ground lane would otherwise show nothing about bridges (null fields are hidden): `level` says ground / bridge."""
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    html = ls.render_lanes(lanes, turns=turns).html
+    assert '"level"' in html and '"bridge"' in html and '"ground"' in html     # link 2 is a bridge, the others ground
+
+
+def test_the_popup_names_the_twin_of_a_link(tmp_path):
+    """Links 1 and 3 are one two-way road: each says the other is its twin; the one-way bridge (link 2) has none."""
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    html = ls.render_lanes(lanes, turns=turns).html
+    assert "(reverse: the same line)" in html and '"twin"' in html
+
+
+def _crossing(lane_id="2_1", painted=True, to_left=True, start=200.0, end=203.0):
+    """A crossing table row for road 2 (east-west at y = 59.31): the zebra's rectangle, 3 m along the road, 6.5 m across it."""
+    import pandas as pd
+
+    x = 18.0 + (start + end) / 2 / 56700
+    dx, dy = 1.5 / 56700, 3.25 / 111320
+    rect = f"POLYGON (({x + dx} {59.31 - dy}, {x + dx} {59.31 + dy}, {x - dx} {59.31 + dy}, {x - dx} {59.31 - dy}, {x + dx} {59.31 - dy}))"
+    return pd.DataFrame({"crossing_id": ["w1"], "lane_id": [lane_id], "start_lr": [start], "end_lr": [end], "across_from": [1.6],
+                         "across_to": [4.85], "to_left": [to_left], "painted": [painted], "length": [6.5],
+                         "crossing_type": ["marked"], "source": ["way"], "cgeom": [rect]})
+
+
+def test_a_zebra_is_one_rectangle_cut_into_stripes_parallel_to_the_lanes(tmp_path):
+    """The crossing's rectangle (3 m along the road, 6.5 m across) cut into stripes, each long along the road (x) and stripe_m thin
+    across it (y), then clipped to the lane the table names (3.25 m wide): the stripes are the same as the rectangle's, only those on the lane."""
+    from lanestyle.render import _zebra_stripes
+
+    gmns, _ = _with_walking(tmp_path)
+    lanes, _t = ls.from_gmns(gmns, modes=("driving", "walking"))
+    lanes["width_m"] = lanes["width_m"].fillna(3.25)
+    st = ls.lane_settings()["zebra"]
+    rings, foot = _zebra_stripes(lanes, _crossing(), st)
+    assert len(rings) == 3                                         # 6.5 m across: stripes 0.5 m every 1.0 m; the lane (3.25 m, across 1.6 .. 4.85) keeps the middle three
+    for ring in rings:
+        xs, ys = [p[0] for p in ring], [p[1] for p in ring]
+        assert (max(xs) - min(xs)) * 56700 == pytest.approx(3.0, abs=0.05)         # as long as the zebra is wide, whatever the lane's ends
+        assert (max(ys) - min(ys)) * 111320 == pytest.approx(0.5, abs=0.05)        # one stripe across it
+    ys = sorted(sum(p[1] for p in r) / len(r) for r in rings)
+    assert all(abs((ys[i + 1] - ys[i]) * 111320 - 1.0) < 0.05 for i in range(2))     # equally spaced: cut from one rectangle
+    assert foot is not None and foot.geom_type == "Polygon"
+    assert _zebra_stripes(lanes, _crossing(painted=False), st) == ([], None)       # unpainted: none
+
+
+def test_a_painted_crossing_adds_the_zebra_layer_and_the_crossing_way_stays_under_the_road(tmp_path):
+    gmns, _ = _with_walking(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
+    lanes["footway"] = None
+    lanes.loc[lanes["lane_id"] == "5_1", "footway"] = "crossing"
+    html = ls.render_lanes(lanes, turns=turns, crossings=_crossing()).html
+    assert 'map.addSource("zebra"' in html and '"band_col"' not in html and "draw_band" not in html
+    assert 'map.addSource("zebra"' not in ls.render_lanes(lanes, turns=turns, crossings=_crossing(painted=False)).html
+    assert 'map.addSource("zebra"' not in ls.render_lanes(lanes, turns=turns).html
+
+
+def test_no_lane_line_under_a_zebra_crossing():
+    """The zebra's stripes are the road's marking there: the lane lines (dashes, centre, edges) stop at its stretch."""
+    import geopandas as gpd
+    from shapely.geometry import LineString, box
+
+    from lanestyle.lines import lane_lines
+
+    rows = [("a1", 1, 1, [(18.000, 59.3), (18.001, 59.3)]), ("a2", 1, 2, [(18.000, 59.29997), (18.001, 59.29997)])]
+    lanes = gpd.GeoDataFrame({"lane_id": [r[0] for r in rows], "link_id": [r[1] for r in rows], "lane_num": [r[2] for r in rows],
+                              "use": "auto", "width_m": 3.25}, geometry=[LineString(r[3]) for r in rows], crs=4326)
+    avoid = box(18.0004, 59.2998, 18.0006, 59.3002)                      # a 2e-4 deg zebra square over both lanes
+    xs = [x for f in lane_lines(lanes, ls.lane_settings(), avoid=avoid)["features"]
+          for line in ([f["geometry"]["coordinates"]] if f["geometry"]["type"] == "LineString" else f["geometry"]["coordinates"]) for x, _ in line]
+    assert xs and not any(18.0004 < x < 18.0006 for x in xs)
+
+
+def test_a_link_with_no_road_class_is_not_drawn(tmp_path):
+    """A ferry in the walking network has no road class (highway null): it is no lane."""
+    from lanestyle.render import _roads_only
+
+    gmns, _ = _with_walking(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
+    lanes.loc[lanes["lane_id"] == "5_1", "highway"] = None
+    kept = set(_roads_only(lanes)["lane_id"])
+    assert "5_1" not in kept and "1_1" in kept and len(kept) == len(lanes) - 1
+    ls.render_lanes(lanes, turns=turns)                                       # and the map still renders
+
+
+def test_the_popup_says_what_a_footway_is(tmp_path):
+    """highway=footway + footway=crossing is a crosswalk, not "a footway": a `kind` row says so (and sidewalk for a sidewalk)."""
+    gmns, _ = _with_walking(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
+    lanes["footway"] = None
+    lanes["crossing"] = None
+    lanes.loc[lanes["lane_id"] == "5_1", ["footway", "crossing"]] = ["crossing", "marked"]
+    html = ls.render_lanes(lanes, turns=turns, settings={"lanes": {"crossing_max_m": 0}}).html     # (a crossing off every road is demoted: next test)
+    assert '"kind"' in html and "crosswalk (marked)" in html
+
+
+def test_a_crossing_that_is_mostly_off_the_road_is_drawn_as_a_footway(tmp_path):
+    """OSM tags a whole 173 m way footway=crossing where only its end crosses (1342546079): a long link with almost nothing on a road is a footway."""
+    gmns, _ = _with_walking(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
+    lanes["footway"] = None
+    lanes["crossing"] = None
+    lanes.loc[lanes["lane_id"] == "5_1", ["footway", "crossing"]] = ["crossing", "marked"]
+    from lanestyle.render import _demote_crossings
+    g = lanes.copy()
+    g["demoted"] = None
+    _demote_crossings(g, {"crossing_max_m": 0.1, "crossing_min_on": 0.2})                # any length counts as long here
+    assert g.loc[g["lane_id"] == "5_1", "footway"].isna().all() and "OSM tags it a crossing" in g.loc[g["lane_id"] == "5_1", "demoted"].iloc[0]
+    g = lanes.copy()
+    g["demoted"] = None
+    _demote_crossings(g, {"crossing_max_m": 1e6, "crossing_min_on": 0.2})                # a short one stays a crosswalk
+    assert (g.loc[g["lane_id"] == "5_1", "footway"] == "crossing").all()
+
+
+def test_footways_of_two_levels_meeting_at_a_node_each_keep_their_own_outline():
+    """Steps down into a tunnel (layer -1) meet a ground footway at node 2. A tunnel differs in colour and pattern only: each level keeps its own outline all along,
+    and only where the other footway's surface lies by the shared node is it cut (no cap over the neighbour)."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.lines import lane_lines
+
+    rows = [("g", 1, 1, 2, None, [(18.000, 59.3), (18.0005, 59.3)]), ("t", 2, 2, 3, "-1", [(18.0005, 59.3), (18.0015, 59.3)])]
+    lanes = gpd.GeoDataFrame({"lane_id": [r[0] for r in rows], "link_id": [r[1] for r in rows], "lane_num": 1, "use": "walk", "width_m": 2.0,
+                              "from_node_id": [r[2] for r in rows], "to_node_id": [r[3] for r in rows],
+                              "layer": [r[4] for r in rows]}, geometry=[LineString(r[5]) for r in rows], crs=4326)
+    fc = lane_lines(lanes, ls.lane_settings())
+
+    def xs(band):
+        return [x for f in fc["features"] if f["properties"]["b"] == band
+                for line in ([f["geometry"]["coordinates"]] if f["geometry"]["type"] == "LineString" else f["geometry"]["coordinates"]) for x, _ in line]
+    ground, low = xs("ground"), xs("low")
+    assert ground and low                                           # both levels are outlined
+    assert max(ground) < 18.0005 + 1.5 / 56700                      # the ground outline stops at its own end: it does not run on over the steps
+    assert max(low) > 18.0015 - 1.5 / 56700                         # the tunnel's outline runs along it to its far end ...
+    assert min(low) < 18.0005 + 3.0 / 56700                         # ... and starts by the node: no seam, no stretch left without a line
+
+
 def test_default_widths_by_use():
     import pandas as pd
     from lanestyle.render import _widths, lane_settings
@@ -362,3 +539,77 @@ def test_a_footpath_has_no_arrow_and_a_tunnel_is_as_opaque_as_a_road(tmp_path):
     feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
     arrow = {f["properties"]["lane_id"]: f["properties"]["oneway"] for f in feats}
     assert arrow["5_1"] in (0, False) and arrow["1_1"] in (1, True) and arrow["2_1"] in (1, True)   # walk: none; roads: yes
+
+
+def test_join_footways_only_at_a_shared_node():
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from lanestyle.gmns import _join_footways
+
+    def lane(i, use, a, b, line):
+        return dict(lane_id=i, use=use, from_node_id=a, to_node_id=b, connector=False, width_m=3.0 if use == "auto" else None, geometry=line)
+
+    road = lane("r", "auto", 1, 2, LineString([(7.0, 43.0), (7.0001, 43.00002)]))      # ends 2 m beside node 2
+    foot = lane("f", "walk", 2, 3, LineString([(7.0001, 43.0), (7.0002, 43.0)]))      # starts on node 2
+    lanes = _join_footways(gpd.GeoDataFrame([road, foot], crs=4326))
+    c = lanes[lanes["connector"]]
+    assert len(c) == 1 and c.iloc[0]["from_lane"] == "r" and c.iloc[0]["to_lane"] == "f"
+    foot["from_node_id"] = 9                                                          # no shared node: nothing is added
+    assert not _join_footways(gpd.GeoDataFrame([road, foot], crs=4326))["connector"].any()
+
+
+def test_a_tunnel_differs_from_ground_in_look_only(tmp_path):
+    """Kaveh (2026-10-02, said several times): the only difference of a tunnel is its colour and pattern. The same lane table at ground level and as a tunnel
+    (every lane layer -1, tunnel yes) gives the same outlines, lane lines and gap fills, the same footpaths drawn above roads and the same draw order: only the level label differs."""
+    from lanestyle.frames import frames
+    from lanestyle.lines import lane_lines
+    from lanestyle.render import _footpaths_on_roads, _widths
+
+    gmns, _ = _with_walking(tmp_path)
+    s = ls.lane_settings()
+    ground, _ = ls.from_gmns(gmns, modes=("driving", "walking"))
+    ground["use"] = ground["use"].fillna("auto")
+    ground["width_m"] = _widths(ground, s)
+    tunnel = ground.copy()
+    tunnel["layer"], tunnel["tunnel"] = "-1", "yes"
+
+    def shape(fc):                                                   # the lines without their level label
+        return sorted((f["properties"]["t"], str(f["geometry"])) for f in (fc or {"features": []})["features"])
+    assert {f["properties"]["b"] for f in lane_lines(ground, s)["features"]} <= {"ground"}
+    assert {f["properties"]["b"] for f in lane_lines(tunnel, s)["features"]} == {"low"}
+    assert shape(lane_lines(ground, s)) == shape(lane_lines(tunnel, s))
+    gg, _, _ = frames(ground, s)
+    gt, _, _ = frames(tunnel, s)
+    assert [f["geometry"] for f in (gg or {"features": []})["features"]] == [f["geometry"] for f in (gt or {"features": []})["features"]]
+    assert _footpaths_on_roads(ground) == _footpaths_on_roads(tunnel)
+
+
+def test_tunnels_on_different_layers_do_not_touch():
+    """Kaveh (2026-10-02): a footway on layer -1 and a road on layer -2 are on different levels and shouldn't be connected. roadstyle draws every layer below ground in one band,
+    but nothing is cut, merged or matched across layers: the footway's outline is the same with the road there or not."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.lines import lane_lines
+
+    def table(road_layer):
+        rows = [("f", 1, "walk", "-1", [(18.000, 59.3), (18.002, 59.3)], 2.0)]
+        if road_layer is not None:
+            rows.append(("r", 2, "auto", road_layer, [(18.001, 59.2999), (18.001, 59.3001)], 3.25))      # crosses the footway, no shared node
+        return gpd.GeoDataFrame({"lane_id": [r[0] for r in rows], "link_id": [r[1] for r in rows], "lane_num": 1, "use": [r[2] for r in rows],
+                                 "width_m": [r[5] for r in rows], "from_node_id": [10 * r[1] for r in rows], "to_node_id": [10 * r[1] + 1 for r in rows],
+                                 "layer": [r[3] for r in rows], "tunnel": "yes"}, geometry=[LineString(r[4]) for r in rows], crs=4326)
+
+    def foot_edge_len(fc):                                           # the edge lines that run along the footway (y within its width), whatever the road does
+        n = 0
+        for f in fc["features"]:
+            if f["properties"]["t"] != "edge":
+                continue
+            lines = [f["geometry"]["coordinates"]] if f["geometry"]["type"] == "LineString" else f["geometry"]["coordinates"]
+            n += sum(abs(b[0] - a[0]) for line in lines for a, b in zip(line, line[1:]) if abs(a[1] - 59.3) < 2e-5 and abs(b[1] - 59.3) < 2e-5)
+        return round(n, 7)
+    s = ls.lane_settings()
+    alone = foot_edge_len(lane_lines(table(None), s))
+    assert alone > 0
+    assert foot_edge_len(lane_lines(table("-2"), s)) == alone        # a road on another layer cuts nothing of it ...
+    assert foot_edge_len(lane_lines(table("-1"), s)) < alone         # ... one on its own layer does (the footway's outline stops at the road)

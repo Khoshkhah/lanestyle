@@ -222,3 +222,124 @@ one road, as asphalt does. The lines are **lanestyle's own layer**, drawn on top
 
 - ~~lanestyle's history before going public~~ Done 2026-09-30: the commits were rewritten to the
   GitHub noreply address (as duckOSM's were) and the repo made public.
+
+
+## Footway joins and twin footways (2026-10-01)
+
+- **Joins** (`gmns._join_footways`): a road lane sits beside its link's line, a footway lane on it, so at a node the two links share
+  their ends are up to a lane width apart. Where the two links share a node in the data and the lane ends are 0.3-6 m apart, lanestyle
+  adds a straight connector lane (footway kind) from the road lane's end to the footway's. Never between links that share no node
+  (that would invent a link OSM does not map). Monaco: 542.
+- **Twin footways** are no longer nudged by `_break_twins` (that 0.2 m shift is for car lanes only); both are drawn as the data has them.
+
+## Frames: a road and its sidewalk (2026-10-01)
+
+duckOSM writes, on a `footway=sidewalk` link, the road it runs along (`along_link_id`, `along_mode`, `along_gap_m`; 1,342 of Monaco's 1,374,
+394 of them roads that exist only in `gmns_driving`). `frames.py` (`frame_gap_m`, default 2 m, 0 = off) takes each such sidewalk whose
+surface lies within that gap of its road's surface, at the same level: the gap is filled (in the walk colour, through the junction-fillet layer's
+`c` property), and no outline is drawn between the two (road edge lines and the footpath outline are cut by the frames' area). Drawing only; no
+lane moves. Farther sidewalks, and the 32 with no road, keep their own outline. Monaco: 1,310 gap polygons.
+
+Level (Kaveh, 2026-10-01: "consider the level for grouping"): duckOSM picks the road among links of the sidewalk's own level (`layer`, else
+bridge 1 / tunnel -1, else 0), so a sidewalk is never tied to the road above or below it (64 were, in Monaco); `frames.py` also groups only
+within one band. lanestyle remaps a road whose link the multi-mode merge dropped (the walking twin of a one-way road) to the kept link of the
+same OSM way: 144 sidewalks had no road in the table before. Monaco: 1,310 sidewalk links with a road, 1,404 gap polygons.
+
+The gap is a verge, not a lane (Kaveh, 2026-10-02): drawn in a lighter tint of the footway colour; clicking it opens a popup of its own (`frame gap · road …
+· sidewalk … · N m apart`, and only that one); in a tunnel it takes the tunnel look (faded, with a light hatch).
+
+One street, several ways (Kaveh, 2026-10-02: `161748267#10f` was not grouped with `568187257#4f`): duckOSM records one road per sidewalk, chosen by the
+distance to the road's *edge* (not its centre line, which is far for a wide street), at the sidewalk's midpoint; a sidewalk 58 m long runs
+along two ways of one street. `frames.py` therefore groups a sidewalk with every road of the recorded road's street name (lane 1's `name`) at the
+same level, within `frame_gap_m`. The popup names the nearest of them. Monaco: 1,658 gap polygons.
+
+Footway twins (Kaveh, 2026-10-02: `680777232#3r` / `#3f` "un-directed roads with different geometry"): the two links of a footway have the
+same line both ways, which roadstyle pairs as a two-way road's lanes and shifts apart. `render_lanes` passes roadstyle's `directed_col` (False
+for a walk lane), so a footway pair is one undirected strip, unshifted, with no arrows; the 0.2 m nudge (`_break_twins`) is for car lanes only.
+
+Any footpath beside a road (Kaveh, 2026-10-02: "do the same for all footways, with a different label"): duckOSM also fills `along_*` for a footway, path, pedestrian
+or cycleway link that is not a mapped sidewalk (not a crossing, a link or steps) when its edge lies within 2 m of a same-level road's edge,
+and says `along_kind = 'adjacent'` (a mapped sidewalk: `'sidewalk'`). Nothing moves, and only a mapped sidewalk gets `parent_link_id` or may be
+placed from its road. lanestyle frames both kinds the same; the popup says `footpath` for an adjacent one. Monaco: 560 adjacent (2 m; now `adjacent_m` 5 m)
+(450 footway, 86 pedestrian, 24 path), median 3.5 m between lines.
+
+Sidewalk colour and the gap's casing (Kaveh, 2026-10-02): a mapped sidewalk (`footway=sidewalk`) has its own colour (`colors.sidewalk`) and legend row; an
+adjacent footpath keeps the footway colour. The gap between road and footpath is a lighter tint of its footpath's colour, and its own sides, those
+touching neither the road nor the footpath, get the usual edge line (the casing), so the verge ends in a line like every other surface.
+
+The whole gap (Kaveh, 2026-10-02: "when a footway is matched to a road we should fill all its gap, not just the close part"): a footpath that is within
+`frame_gap_m` of its road anywhere is a frame, and the gap is then filled along its whole length, up to `frame_reach_m` (default 8 m) wide; the closing
+radius follows the widest gap (sampled every metre along the footpath), not `frame_gap_m`.
+
+A crossing that is no crossing (Kaveh, 2026-10-02: `1342546079#1r` "must be a sidewalk but it is a crosswalk"): OSM tags the whole 173 m way
+`footway=crossing`, though only its last 4 m cross the road (duckOSM splits it at the nodes: `#1` 2 % on a road, `#2` 76 %). `_demote_crossings`: a crossing
+link longer than `crossing_max_m` (12 m) with under `crossing_min_on` (20 %) of its length on the road surface of its level is drawn as a footway, and
+its popup says why (`kind`). The data keeps OSM's tag. Monaco: 90 links. They are not framed as sidewalks (no `along_*`: duckOSM leaves crossings out).
+
+Gap casing off, whole gap by strips (Kaveh, 2026-10-02: the gap's casing "makes a lot of issues"): `frame_casing` (default false) turns the gap's own edge line off; the
+closing that rounded the gap's ends (stray arcs) is replaced by straight strips between the footpath's centre line and the nearest points of the
+road's surface, one per metre, so a gap ends square. A footpath duckOSM matched to a road is a frame wherever it lies within `frame_reach_m` (8 m) of it
+(before: only within `frame_gap_m`, 2 m, of it at its nearest point; `712186090#16r`, 2.17 m, was left out). Monaco: 1,742 gap polygons, 1,550 footpaths.
+
+A footway that goes on in another band (Kaveh, 2026-10-02: `1531374855#1f` → `1525443697#1f`): both are layer 1, the first `bridge=yes` (bridge band), the second a raised
+walkway (high band), joined at one node. Each band's outline used to end in a round cap with a thick bridge arc across the joint; now a footway's outline stops where
+the surface of a footway of another band that meets it at a node begins (not where one merely passes over or under), so the bridge's thick outline ends square
+and the thin one carries on.
+
+A connector's modes (Kaveh, 2026-10-02, roundabout `4191422298276505638_1>1158609578243345373_1`): a connector took the mode group of the lane it leaves, so a connector from a
+street cars and pedestrians share (teal) onto a car-only ring drew as a teal blob on the grey ring. It now has the modes both its lanes have (here: cars only).
+
+Connectors below lanes (Kaveh, 2026-10-02: "give low order to the connector, so it goes below the other lanes in the same level"): `render_lanes` gives every connector roadstyle's
+per-edge draw order `-300` (`order_col`), so inside a level it is drawn under every lane. A connector only fills the gap between lanes; it never sits on a lane of another colour
+(a teal connector on a car-only ring). Its colour is the modes both its lanes share (`_from_gmns`).
+
+Tunnel body (Kaveh, 2026-10-02, circles at tunnel joints): roadstyle draws a tunnel's fill at 72 % over its casing, so the ring of one lane's round end shows through the next lane at
+every joint. lanestyle puts an opaque polygon (`tunnel_body`, the land colour, `""` = off) under the fills of the low band, over the casings: the rings inside a joint are hidden, the casing beyond the
+lane's width stays.
+
+Connectors unclickable (Kaveh, 2026-10-02): `connectors_clickable` (default false). roadstyle picks a click and a hover from `map.queryRenderedFeatures` on its road layers; lanestyle's page
+script leaves features with `connector` true out of that answer, so the lane under a connector is picked, or nothing. On Monaco's roundabout cut-out: 405 test points reported a connector with the setting on, 0 off.
+
+The gap at a corner (Kaveh, 2026-10-02: `7093696539804813988_1` / `1638459837974238401_1`, `939530782#3f`): where a footpath goes from one road to the next the strips (footpath centre line to the nearest road point) left a wedge open.
+The gap is the strips plus the closing of footpath + road (radius = half the widest gap, up to `frame_reach_m`); with no casing on the gap its rounded ends show nothing.
+Straight connectors are drawn above turn connectors (draw order -250 over -300).
+
+A bike lane's connector (2026-10-02): a connector has no `lane_num`, so the "bike lane" test (`lane_num` beyond the link's `lanes`) failed and it drew in the car group; a connector that takes a bike lane's `use` is now a bike
+lane's in the mode group (blue). duckOSM gives it the bike lane width (1.5 m, not 3.25 m).
+
+The outline of a tunnel footway that meets a ground footway (Kaveh, 2026-10-02: `688664226#1r` "overlapping visualization with other roads on ground"): the rule "a lower footway that meets a higher one at a node is outlined with the higher level" moved
+the whole tunnel footway's outline to the ground band, over every ground road it passes under. Now only the stretch within `_JOIN_M` (3 m) of that node is outlined with the higher level, the rest keeps its own band;
+no line is drawn across the seam.
+The lanestyle patch that added a "thru" turn for every connector without a movement is removed: duckOSM writes those movements now.
+
+A tunnel footway without an outline (Kaveh, 2026-10-02: `3991034106733057832_1`, edge `690903307#3r`, 47 m): the rule that stops each band's outline where a footway of another band that meets it at a node begins used that footway's whole surface, so a long
+ground footway cut the tunnel's outline everywhere the two overlap (62 of 63 m of its visible sides had no line). It now uses that footway's surface within `_JOIN_M + 1` m of the shared node only.
+
+Which footpaths and which roads match (Kaveh, 2026-10-02: `2898748414202046809_1` / `8634413191741468793_1`, `2944189401358023478_1` / `4488916522033515384_1`): (1) a road to run along is one cars can use (a link of `gmns_driving`);
+a service road only people walk on is not, so no gap is filled between two walking-only lanes (70 footpaths were matched to one). (2) A `footway=crossing` link is matched, like an adjacent footpath, only when it is 10 m or longer and runs
+along the road for most of its length (`899409581#1`: 11 m beside `177189425#1f`); shorter crossings are real (a crossing of a side street also runs along the main road, so direction alone is no test: it matched 581 of Monaco's 1,434).
+lanestyle draws a matched crossing-tagged link as a footway. Monaco: 99 such links, 2,226 matched footpaths, 3,161 gap polygons.
+
+Crossings that continue a sidewalk (Kaveh, 2026-10-02: `833633689#1r`, `833633689#2f`, `833633691#1f`, `833633691#2r` "do gap filling"): a short `footway=crossing` link across a side street's mouth runs along the main road and continues the sidewalk on both sides.
+duckOSM now matches it (`along_kind` adjacent) when it shares a node with a matched footpath and runs along that footpath's road (372 of Monaco's 1,434 crossing links); a short one is still a crosswalk (cream, with its zebra), only now framed:
+the gap between it and the road is filled. lanestyle draws a crossing-tagged link as a footway only when it is longer than `crossing_max_m` (10 m) and matched, or has under `crossing_min_on` on a road.
+
+Popup: the match, and the street's short pieces (Kaveh, 2026-10-02: "why doesn't lane A match lane B?" for `1086377404#2f` / `503462464#2f`, `1086377392#6r` / `851792666#1f`, `1086377392#3r` / `503471324#4f`): the matches existed in the data but nothing showed them. A
+footpath's popup now has `along` (the road it runs along, the kind, how many roads its route has) and a road's popup `footpaths` (the footpaths whose route has it). A footpath is also framed with every piece of its street (same name) within `frame_reach_m`, so a 3 m piece it
+does not run along for 4 m (`503471324#4f`) is not left out.
+
+A footpath on a road (Kaveh, 2026-10-02: `4644359574953198651_1` "gone under" `6333652900798709432_2`): `1086377387#2f` lies 95 % on the road lane of `8056051#2f`; a road is drawn above a footway by class, so the footway vanished. A footpath (not a crossing, not a connector) with 60 % or
+more of its area on the road surface of its level is drawn above the roads (roadstyle's per-edge order `100`). Monaco: 207.
+
+A tunnel differs in colour and pattern only (Kaveh, 2026-10-02: "why are you treating tunnels in another way?"): the rule that moved a tunnel footway's outline to the higher level near a node (and the seam it needed) is removed. Every level keeps its own outline all along; the only
+joint rule, for any two footways of different levels that meet at a node, is that each outline is cut where the other footway's surface lies by the shared node (so no round cap shows over the neighbour). `3991034106733057832_1`: no casing missing except the part under the other footways' surfaces.
+What stays tunnel-specific is the look: roadstyle's faded fill with a hatch, and the opaque `tunnel_body` base under it (a translucent fill shows the rings of the lanes' round ends).
+
+Layers are levels (Kaveh, 2026-10-02: `2945046272619776365_1` (footway, layer -1) and `6879738458846830640_1` (road, layer -2) "on different layers and shouldn't be connected"; `6038399490234152030_1` / `6879738458846830640_2` too): roadstyle draws every layer below ground in one `low` band, and lanestyle used the draw band to decide what interacts, so
+layers -1 and -2 were one level. `lines._group` is what a lane interacts with: its band, and for the low band its layer (`low@-1`, `low@-2`; a tunnel with no layer number is -1). Outlines are merged and cut, lanes framed, matched and drawn above roads by group; the lines still go in the draw band
+(`_real`). Higher layers (a layer 1 and a layer 2 bridge) are still one draw band each; split them the same way if a case shows it. duckOSM already matches by the exact level.
+
+Layer -1 over layer -2 (Kaveh, 2026-10-02: "you didn't put layer -1 completely over layer -2, in colour and casing"): the layers below ground are one roadstyle band, drawn by road class, so a layer -2 road could lie over a layer -1 footway. (1) Colour: a lane of the low band gets roadstyle's per-edge
+order `layer * 90 + rank`, the rank inside the layer: a connector under its lanes (turns -30, straight -20), a road class by roadstyle's z order (0-9), a footpath on a road +15; every layer -1 lane is above every layer -2 lane (checked in the page: about -85 against -173,
+connectors -120 against -200). (2) Casing: a lower layer's lines (lane lines, connector casing, footpath outline) are cut where a higher layer's surface lies (`lines.above`), so no outline of layer -2 shows over layer -1. Layers -1 to -4 exist in Monaco; the order is clamped
+at +/-400 (layer -4's connectors at -390 are the last that differ).
