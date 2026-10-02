@@ -56,9 +56,7 @@ def _from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
         if "osm_id" in lanes:
             way_of.update(zip(lanes["link_id"], lanes["osm_id"]))
         if i:
-            lanes = lanes[~lanes["link_id"].isin(seen)]
-            if "osm_id" in lanes:
-                lanes = lanes[~lanes["osm_id"].isin(seen_ways)]
+            lanes = _keep_joins(lanes, [t["lane_id"] for t in tables], seen, seen_ways)
         seen |= set(lanes["link_id"].dropna())
         if "osm_id" in lanes:
             seen_ways |= set(lanes["osm_id"].dropna())
@@ -80,58 +78,31 @@ def _from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
         if "along_links" in lanes:
             lanes["along_links"] = [[a if a in links else kept.get(way_of.get(a), a) for a in rs] if isinstance(rs, list) else rs
                                     for rs in lanes["along_links"]]
-    lanes = _join_footways(lanes)
     turns = pd.concat(turn_tables, ignore_index=True)
     keep = set(lanes["lane_id"])
     return lanes, turns[turns["from_lane"].isin(keep) & turns["to_lane"].isin(keep)].reset_index(drop=True)
 
 
-def _join_footways(lanes, max_gap_m=6.0, min_gap_m=0.3):
-    """A short connector where a footway and a road meet at a node of the data but their lanes don't: a road lane sits
-    beside its link's line, a footway lane on it, so the two ends are up to a lane width apart. Only at a node both links
-    share (never a link OSM does not map), one per footway end, to the nearest road lane end; the connector is a lane of
-    the footway's kind (``connector`` True, ``from_lane`` the road lane, ``to_lane`` the footway)."""
-    import math
-
-    import geopandas as gpd
+def _keep_joins(lanes, earlier, seen, seen_ways):
+    """A later mode's lanes without the links an earlier mode has (and its other direction, the same OSM way). Its connectors stay when both
+    their lanes are kept: a footway's join to a road lane of an earlier mode (duckOSM's ``lane_connector`` in ``gmns_walking``, docs/design/gmns_walk_joins.md);
+    the road lane is the earlier mode's, the connector takes the footway's place in the table (its class, use, level and link)."""
     import pandas as pd
-    from shapely.geometry import LineString, Point
 
-    need = {"from_node_id", "to_node_id", "use", "connector"}
-    if not need <= set(lanes.columns) or "walk" not in set(lanes["use"]):
-        return lanes
-    kx = math.cos(math.radians(lanes.geometry.iloc[0].coords[0][1])) * 111320.0
-    ends = {}                                        # node -> [(lane index, is_walk, end point)]
-    for i, (g, a, b, use, conn) in enumerate(zip(lanes.geometry, lanes["from_node_id"], lanes["to_node_id"],
-                                                 lanes["use"], lanes["connector"])):
-        if conn or g is None or g.geom_type != "LineString":
-            continue
-        for node, pt in ((a, Point(g.coords[0])), (b, Point(g.coords[-1]))):
-            if pd.notna(node):
-                ends.setdefault(node, []).append((i, use == "walk", pt))
-    dist = lambda p, q: math.hypot((p.x - q.x) * kx, (p.y - q.y) * 111320.0)       # noqa: E731
-    rows, seen = [], set()
-    for node, es in ends.items():
-        for i, walk, pt in es:
-            if not walk:
-                continue
-            roads = [(dist(pt, q), j, q) for j, w, q in es if not w]
-            if not roads:
-                continue
-            d, j, q = min(roads, key=lambda r: r[0])
-            key = (round(pt.x, 7), round(pt.y, 7), round(q.x, 7), round(q.y, 7))
-            if min_gap_m < d <= max_gap_m and key not in seen:
-                seen.add(key)
-                row = lanes.iloc[i].copy()
-                row["from_lane"], row["to_lane"] = lanes.iloc[j]["lane_id"], lanes.iloc[i]["lane_id"]
-                row["lane_id"] = f"{row['from_lane']}>{row['to_lane']}"
-                row["connector"], row["geometry"] = True, LineString([q, pt])
-                row["width_m"] = float("nan")             # the footway's width, by use
-                rows.append(row)
-    if not rows:
-        return lanes
-    new = gpd.GeoDataFrame(pd.DataFrame(rows), geometry="geometry", crs=lanes.crs)
-    return pd.concat([lanes, new], ignore_index=True)
+    conn = lanes["connector"].fillna(False).astype(bool) if "connector" in lanes else None
+    rest = lanes if conn is None else lanes[~conn]
+    rest = rest[~rest["link_id"].isin(seen)]
+    if "osm_id" in rest:
+        rest = rest[~rest["osm_id"].isin(seen_ways)]
+    if conn is None or not conn.any():
+        return rest
+    from_ids = {x for t in earlier for x in t}
+    foot = rest.set_index("lane_id")
+    joins = lanes[conn]
+    joins = joins[joins["from_lane"].isin(from_ids) & joins["to_lane"].isin(foot.index)].copy()
+    for c in [c for c in rest.columns if c not in ("lane_id", "width_m", "geometry", "connector", "from_lane", "to_lane")]:
+        joins[c] = joins["to_lane"].map(foot[c])
+    return pd.concat([rest, joins], ignore_index=True) if len(joins) else rest
 
 
 def _from_gmns_mode(gmns_db, mode, source_db):

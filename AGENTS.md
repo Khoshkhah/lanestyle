@@ -114,6 +114,6 @@ Build with `duckosm gmns SRC -m driving -m walking -o OUT`, read with `ls.from_g
   dashes, faded fill), a bridge of the high band with the deck look. lanestyle only tunes the look (`_ROADSTYLE`) and
   mirrors the band for its own layers (`lines._band`: low / ground / high / bridge). Needs the roadstyle with that
   change (the `levels-and-looks` branch, not yet released).
-- A GMNS file needs duckOSM `gmns-values` (commit 5a14e62 or later) for `link_along`, the continuation movements and the crossing tables; older files still draw, without frames and zebras.
+- A GMNS file needs duckOSM `gmns-values` with the footway joins (ae813ac or later: `gmns_walking.lane_connector`; lanestyle adds no connector itself) for the joins between footways and roads, and (commit 5a14e62 or later) for `link_along`, the continuation movements and the crossing tables; older files still draw, without frames and zebras.
 - Without `select_color`, roadstyle's violet selection glow hides the red clicked lane. That's why
   `render_lanes` passes the `clicked` colour.

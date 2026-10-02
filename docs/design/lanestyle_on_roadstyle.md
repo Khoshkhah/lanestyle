@@ -226,7 +226,7 @@ one road, as asphalt does. The lines are **lanestyle's own layer**, drawn on top
 
 ## Footway joins and twin footways (2026-10-01)
 
-- **Joins** (`gmns._join_footways`): a road lane sits beside its link's line, a footway lane on it, so at a node the two links share
+- **Joins** (moved to duckOSM 2026-10-02: `gmns_walking.lane_connector`, duckOSM `docs/design/gmns_walk_joins.md`; lanestyle's `_join_footways` is gone, `gmns._keep_joins` reads them). Until then: a road lane sits beside its link's line, a footway lane on it, so at a node the two links share
   their ends are up to a lane width apart. Where the two links share a node in the data and the lane ends are 0.3-6 m apart, lanestyle
   adds a straight connector lane (footway kind) from the road lane's end to the footway's. Never between links that share no node
   (that would invent a link OSM does not map). Monaco: 542.
@@ -351,3 +351,6 @@ a drawing tool should not do; they belong in duckOSM's GMNS. Open: the small dar
 
 The casing at a connector (Kaveh, 2026-10-02: "you didn't fix it completely, the casing issue is there yet", same spot): a connector's own two edge lines were drawn wherever no other lane or connector's surface covered them, with flat lane ends, though the page draws lanes with round ends. Two faults: the edge line closed the mouth of the footway that meets the road (a footway's surface hid no connector casing, though it cuts a road's edge line), and a lane's round end stuck out past the line, which then ran as a hook through the road's surface.
 The outline near a connector is now the boundary of the surface the map draws (`lines.lane_lines`): the level's lanes with round ends, plus the connectors, kept within the connector's surface and the end disks of the lanes it joins, and open where a footway's surface lies. Per level (`_group`), so a bridge no longer hides the casing of a road below. Checked on the reported spot at zoom 20.5 and 22 and on three other Monaco junctions (`renders/footway_end/other_junction_*.png`): the same or better. Monaco's page is 4.2 MB (3.8 MB before): the union boundary repeats part of the lane edge lines.
+
+Footway joins are data (Kaveh, 2026-10-02: "lanestyle is a visualization tool, it isn't right to add connectors on its own"): duckOSM writes them (`_build_walk_joins`, `gmns_walking.lane_connector`: Monaco 542, the same footway ends lanestyle joined; 18 of the 542 start from another road lane end,
+at nearly the same distance). `_join_footways` is deleted. The multi-mode reader (`gmns._keep_joins`) keeps a later mode's connector when both its lanes are kept, and gives it the footway's class, use, level and link (the road lane belongs to the earlier mode). A GMNS file made before this has no footway joins.

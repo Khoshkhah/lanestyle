@@ -541,21 +541,23 @@ def test_a_footpath_has_no_arrow_and_a_tunnel_is_as_opaque_as_a_road(tmp_path):
     assert arrow["5_1"] in (0, False) and arrow["1_1"] in (1, True) and arrow["2_1"] in (1, True)   # walk: none; roads: yes
 
 
-def test_join_footways_only_at_a_shared_node():
-    import geopandas as gpd
-    from shapely.geometry import LineString
-    from lanestyle.gmns import _join_footways
-
-    def lane(i, use, a, b, line):
-        return dict(lane_id=i, use=use, from_node_id=a, to_node_id=b, connector=False, width_m=3.0 if use == "auto" else None, geometry=line)
-
-    road = lane("r", "auto", 1, 2, LineString([(7.0, 43.0), (7.0001, 43.00002)]))      # ends 2 m beside node 2
-    foot = lane("f", "walk", 2, 3, LineString([(7.0001, 43.0), (7.0002, 43.0)]))      # starts on node 2
-    lanes = _join_footways(gpd.GeoDataFrame([road, foot], crs=4326))
-    c = lanes[lanes["connector"]]
-    assert len(c) == 1 and c.iloc[0]["from_lane"] == "r" and c.iloc[0]["to_lane"] == "f"
-    foot["from_node_id"] = 9                                                          # no shared node: nothing is added
-    assert not _join_footways(gpd.GeoDataFrame([road, foot], crs=4326))["connector"].any()
+def test_a_footway_join_is_read_from_duckosms_walking_connectors_not_made_here(tmp_path):
+    """The join of a footway to a road lane is data (duckOSM `gmns_walking.lane_connector`, docs/design/gmns_walk_joins.md): lanestyle keeps it when both its lanes are kept,
+    as a footway's lane (its class, use and link), and invents none."""
+    gmns, _ = _with_walking(tmp_path)
+    assert not ls.from_gmns(gmns, modes=("driving", "walking"))[0]["connector"].any()      # no table: no connector
+    con = duckdb.connect(str(gmns))
+    con.execute("LOAD spatial; CREATE TABLE gmns_walking.lane_connector(connector_id VARCHAR, mvmt_id VARCHAR, from_lane_id VARCHAR, "
+                "to_lane_id VARCHAR, width DOUBLE, geom GEOMETRY)")
+    con.execute("INSERT INTO gmns_walking.lane_connector VALUES ('2_1>5_1', NULL, '2_1', '5_1', 2.0, ST_GeomFromText('LINESTRING(18.01 59.31, 18.011 59.335)')), "
+                "('2_1>9_1', NULL, '2_1', '9_1', 2.0, ST_GeomFromText('LINESTRING(18.01 59.31, 18.012 59.335)'))")      # 9_1 is no lane
+    con.close()
+    lanes, _ = ls.from_gmns(gmns, modes=("driving", "walking"))
+    c = lanes[lanes["connector"]].set_index("lane_id")
+    assert list(c.index) == ["2_1>5_1"]
+    f = lanes.set_index("lane_id").loc["5_1"]
+    assert c.loc["2_1>5_1", "use"] == "walk" and c.loc["2_1>5_1", "highway"] == f["highway"] and c.loc["2_1>5_1", "link_id"] == f["link_id"]
+    assert c.loc["2_1>5_1", "from_lane"] == "2_1" and c.loc["2_1>5_1", "width_m"] == 2.0
 
 
 def test_a_tunnel_differs_from_ground_in_look_only(tmp_path):
