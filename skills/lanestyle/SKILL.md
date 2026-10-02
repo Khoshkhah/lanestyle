@@ -65,6 +65,9 @@ Every other keyword goes straight to `roadstyle.render_edges`: `overlays=[rs.Ove
 for a route on top, `name=`, `view_3d=`, `include=` / `exclude=` road classes, `tiles=True`
 (roadstyle silently ignores an unknown keyword, so check spelling).
 
+Open a page at a spot with `page.html#zoom/lat/lon`. The Roads box lists the lane uses and Bridges / Tunnels (no road classes).
+lanestyle adds no connector itself: footway joins and U-turn arcs come from duckOSM (`gmns_walking.lane_connector`).
+
 What the page shows: lanes at true width from zoom 16 (class widths below); dashed dividers
 between lanes of one direction, a solid centre line between directions, grey edges, cut at
 junctions; bus and bike lanes painted over the palette with rows in the Roads box; the street name

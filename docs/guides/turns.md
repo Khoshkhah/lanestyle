@@ -25,7 +25,7 @@ A DataFrame with `from_lane` and `to_lane` (both `lane_id`s) and an optional `ty
 
 The clicked lane turns **red** (`colors.clicked`), the lanes it leads into **green**
 (`colors.turns_into`), U-turns **purple** (`colors.uturn`). Connectors on the way are coloured with
-the lanes they lead into. Click the background to clear. Without `turns`, a click only selects.
+the lanes they lead into. A U-turn at a road end is a half-circle through the two lane ends, as wide as the lanes (duckOSM writes it). Click the background to clear. Without `turns`, a click only selects.
 
 The colours are in the settings:
 

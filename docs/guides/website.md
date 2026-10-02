@@ -14,6 +14,11 @@ python serve.py 8080      # http://localhost:8080/lanes.html, no caching
 It serves the folder with `Cache-Control: no-store`, so a rebuilt map shows at once. Working
 remotely? Forward the port (VS Code's Ports panel, or `ssh -L 8080:localhost:8080 host`).
 
+## Open it at a spot
+
+A page opens at the place in its address: `monaco.html#zoom/lat/lon`, for example `monaco.html#20.5/43.73204/7.41653` (longitude last, as in OpenStreetMap links).
+Change the address and the map moves. It is how a link can point at one junction.
+
 ## Embed it
 
 ```html

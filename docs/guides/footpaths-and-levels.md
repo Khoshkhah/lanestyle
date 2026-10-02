@@ -39,6 +39,8 @@ Layers above ground are still one band each.
 
 ## Connectors
 
-A connector is the surface joining two lanes at a junction. It takes the modes both lanes have, is drawn under the lanes (turns below straight ones) and is
-not clickable (`connectors_clickable`). Where a link goes on as one way, duckOSM writes the movements for the lanes that carry on (a lane drop merges,
+A connector is the surface joining two lanes at a junction. It takes the modes both lanes have and is not clickable (`connectors_clickable`). A connector cars can use is part
+of the road: it is drawn just under its own road class, so under the lanes of that class (turns below straight ones) but over a footway that ends on the road. Its outline is the
+boundary of the surface the map draws there, open where a footway meets it. lanestyle only draws connectors, it never adds one: a footway's join to a road lane
+(`gmns_walking.lane_connector`) and a U-turn at a road end (a half-circle as wide as its lanes) are duckOSM's. Where a link goes on as one way, duckOSM writes the movements for the lanes that carry on (a lane drop merges,
 a bike lane continues), so no lane has no way out. See [Settings](../reference/settings.md) for every key.
