@@ -11,7 +11,9 @@ from pathlib import Path
 
 from lanestyle.frames import frames
 from lanestyle.junctions import junction_fillets
-from lanestyle.lines import _band, _group, _paired, lane_lines
+from lanestyle.arrows import lane_arrows
+from lanestyle.street_names import street_names
+from lanestyle.lines import _band, _group, _level, _paired, lane_lines
 
 _LEVEL = {"bridge": "bridge", "high": "above ground", "ground": "ground", "low": "tunnel / below ground"}
 def pd_isna(v):
@@ -80,6 +82,21 @@ _CLICK_JS = """<script>
 """
 
 
+# where a lane's layers go in the page: right after (or before) the fill layers of the lane's band. A band is a bridge (roadstyle keeps its deck layers), a
+# position of roadstyle's drawing order ("-2", "0", "2": its layers roads-fill-lv-2, roads-fill, roads-fill-lv2 ... docs/design/interval_draw_order.md), or,
+# in a table without a drawing order, one of roadstyle's three bands. ``lsAnchor(ids, band, before)``: the layer id, or null when the page has none.
+_ANCHOR_JS = """<script>
+window.lsAnchor = function(ids, b, before){       // before: false = after the band's fill, true = before it, 2 = the casing slot (before its underlay too)
+  const AFTER = {low: ["roads-low-fill-pat", "roads-low-fill"], ground: ["roads-arrows", "roads-fill"], high: ["roads-high-fill"], bridge: ["roads-bridge-fill"]};
+  const BEFORE = {low: ["roads-low-fill"], ground: ["roads-fill"], high: ["roads-high-fill"], bridge: ["roads-bridge-fill"]};
+  let c = (before ? BEFORE : AFTER)[b];
+  if (!c) { const base = b === "0" ? "roads-fill" : "roads-fill-lv" + b; c = before === 2 ? [base + "-under", base] : before ? [base] : [base + "-pat", base]; }
+  return c.find(id => ids.includes(id)) || null;
+};
+</script>
+"""
+
+
 # the lane lines: one MapLibre line layer per band and type, right after that band's fill, so a
 # bridge covers the lines of the street under it; widths in metres (k = width_m / cos(lat)) from
 # width_m_zoom, dashes in multiples of the line width (dash_m / width_m), exact at every zoom
@@ -94,20 +111,19 @@ _LINES_JS = """<script>
     geometry: {type: Array.isArray(c[0][0]) ? "MultiLineString" : "LineString", coordinates: c}}))};
   // after the band's last fill layer (roadstyle's levels and looks: three bands, a tunnel is a road of the low band,
   // its dashes the first of these that exists; a bridge's look layer is drawn after the high band)
-  const AFTER = {low: ["roads-low-fill-pat", "roads-low-fill"], ground: ["roads-arrows", "roads-fill"], high: ["roads-high-fill"],
-                 bridge: ["roads-bridge-fill"]};
   const px = z => 512 * Math.pow(2, z) / 40075016.686;
   function add(){
     if (map.getSource("lane-lines")) return;
     map.addSource("lane-lines", {type: "geojson", data: L});
     const ids = map.getStyle().layers.map(l => l.id);
-    for (const b in AFTER) {
-      const after = AFTER[b].find(id => ids.includes(id));
-      if (!after) continue;
-      const i = ids.indexOf(after);
+    for (const b of D.bands) {
       for (const t in S) {
         const s = S[t];
         if (!s || (t === "bridge_edge" && b !== "bridge")) continue;
+        const casing = t === "edge" || t === "bridge_edge";                       // an outline is a casing: under the fills of its position
+        const after = lsAnchor(ids, b, casing ? 2 : false);
+        if (!after) continue;
+        const i = ids.indexOf(after);
         const w = ["interpolate", ["exponential", 2], ["zoom"]];
         for (let z = Z; z <= 22; z++) w.push(z, ["max", ["*", ["get", "k"], px(z)], MIN]);
         const paint = {"line-color": s.color, "line-width": w,
@@ -115,7 +131,7 @@ _LINES_JS = """<script>
         if (s.dash_m) paint["line-dasharray"] = s.dash_m.map(d => d / s.width_m);
         map.addLayer({id: "lane-lines-" + b + "-" + t, type: "line", source: "lane-lines", minzoom: Z,
                       filter: ["all", ["==", ["get", "t"], t], ["==", ["get", "b"], b]],
-                      layout: {"line-cap": "butt", "line-join": "round"}, paint: paint}, ids[i + 1]);
+                      layout: {"line-cap": "butt", "line-join": "round"}, paint: paint}, casing ? after : ids[i + 1]);
       }
     }
   }
@@ -139,6 +155,47 @@ _ZEBRA_JS = """<script>
     map.addLayer({id: "zebra", type: "fill", source: "zebra", minzoom: ZOOM,
                   paint: {"fill-color": S.color, "fill-antialias": true,
                           "fill-opacity": ["interpolate", ["linear"], ["zoom"], ZOOM, 0.5, ZOOM + 1.5, 1]}}, ids[ids.indexOf(after) + 1]);
+  }
+  if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
+
+# the painted lane arrows (arrows.py): white polygons in metres, per band right after that band's fill
+_ARROWS_JS = """<script>
+(function(){
+  const A = __ARROWS__, S = __STYLE__;
+  function add(){
+    if (map.getSource("lane-arrows")) return;
+    map.addSource("lane-arrows", {type: "geojson", data: A});
+    const ids = map.getStyle().layers.map(l => l.id);
+    for (const b of new Set(A.features.map(f => f.properties.b))) {
+      const after = lsAnchor(ids, b, false);
+      if (!after) continue;
+      map.addLayer({id: "lane-arrows-" + b, type: "fill", source: "lane-arrows", minzoom: S.from_zoom,
+                    filter: ["==", ["get", "b"], b],
+                    paint: {"fill-color": S.color, "fill-antialias": true,
+                            "fill-opacity": ["interpolate", ["linear"], ["zoom"], S.from_zoom, 0.4, S.from_zoom + 1, 1]}}, ids[ids.indexOf(after) + 1]);
+    }
+  }
+  if (map.isStyleLoaded()) add(); else map.once("load", add);
+})();
+</script>
+"""
+
+# street names (street_names.py): roadstyle's own name layer is hidden, ours is drawn in its font, white over a dark halo, like the paint
+_NAMES_JS = """<script>
+(function(){
+  const N = __NAMES__, S = __STYLE__;
+  function add(){
+    if (map.getSource("lane-names")) return;
+    const font = map.getLayer("roads-labels") ? map.getLayoutProperty("roads-labels", "text-font") : null;
+    if (map.getLayer("roads-labels")) map.setLayoutProperty("roads-labels", "visibility", "none");
+    map.addSource("lane-names", {type: "geojson", data: N});
+    map.addLayer({id: "lane-names", type: "symbol", source: "lane-names", minzoom: S.from_zoom,
+      layout: Object.assign({"symbol-placement": "line", "text-field": ["get", "name"], "text-size": S.size,
+                             "symbol-spacing": 300, "text-keep-upright": true}, font ? {"text-font": font} : {}),
+      paint: {"text-color": S.color, "text-halo-color": S.halo, "text-halo-width": 1.5}});
   }
   if (map.isStyleLoaded()) add(); else map.once("load", add);
 })();
@@ -353,8 +410,6 @@ def _lane_types(g, turns):
 _FILLETS_JS = """<script>
 (function(){
   const F = __FILLETS__;
-  const BEFORE = {low: ["roads-low-fill"], ground: ["roads-fill"],
-                  high: ["roads-high-fill"], bridge: ["roads-bridge-fill"]};
   function add(){
     if (map.getSource("lane-fillets")) return;
     map.addSource("lane-fillets", {type: "geojson", data: F});
@@ -363,22 +418,25 @@ _FILLETS_JS = """<script>
     for (const k in cols) color.push(k, cols[k]);
     color.push("#888888");
     const ids = map.getStyle().layers.map(l => l.id);
-    for (const b in BEFORE) {
-      const before = BEFORE[b].find(id => ids.includes(id));
+    const bands = [...new Set(F.features.map(f => f.properties.b))], gapLayers = [];
+    for (const b of bands) {
+      const before = lsAnchor(ids, b, true);
       if (!before) continue;
       map.addLayer({id: "lane-fillets-" + b, type: "fill", source: "lane-fillets",
                     filter: ["==", ["get", "b"], b],
                     paint: {"fill-color": ["case", ["has", "c"], ["get", "c"], Object.keys(cols).length ? color : "#888888"],
-                            "fill-opacity": b === "low" ? ["case", ["has", "c"], 0.72, 1] : 1}}, before);
+                            "fill-opacity": ["case", ["all", ["has", "tn"], ["has", "c"]], 0.72, 1]}}, before);
+      gapLayers.push("lane-fillets-" + b);
     }
     // a frame gap (a sidewalk's verge) in a tunnel: the tunnel look, a light hatch over the faded fill
     const px = new Uint8Array(8 * 8 * 4);
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if ((x + y) % 8 < 2) px.set([255, 255, 255, 110], (y * 8 + x) * 4);
     if (!map.hasImage("lane-hatch")) map.addImage("lane-hatch", {width: 8, height: 8, data: px});
-    const low = BEFORE.low.find(id => ids.includes(id));
-    if (low) map.addLayer({id: "lane-fillets-low-pat", type: "fill", source: "lane-fillets",
-                           filter: ["all", ["==", ["get", "b"], "low"], ["has", "c"]], paint: {"fill-pattern": "lane-hatch"}}, low);
-    const gapLayers = ["low", "ground", "high", "bridge"].map(b => "lane-fillets-" + b).filter(id => map.getLayer(id));
+    for (const b of bands) {
+      const before = lsAnchor(ids, b, true);
+      if (before) map.addLayer({id: "lane-fillets-pat-" + b, type: "fill", source: "lane-fillets",
+                                filter: ["all", ["==", ["get", "b"], b], ["has", "tn"], ["has", "c"]], paint: {"fill-pattern": "lane-hatch"}}, before);
+    }
     map.on("click", gapLayers, e => {
       const f = (e.features || []).find(f => f.properties && f.properties.info);
       if (!f) return;
@@ -400,10 +458,13 @@ _LOWBODY_JS = """<script>
   const F = __BODY__;
   function add(){
     if (map.getSource("lane-low-body")) return;
-    const before = ["roads-low-fill"].find(id => map.getLayer(id));
-    if (!before) return;
+    const ids = map.getStyle().layers.map(l => l.id);
     map.addSource("lane-low-body", {type: "geojson", data: F});
-    map.addLayer({id: "lane-low-body", type: "fill", source: "lane-low-body", paint: {"fill-color": "__LAND__", "fill-opacity": 1}}, before);
+    for (const b of new Set(F.features.map(f => f.properties.b))) {
+      const before = lsAnchor(ids, b, true);
+      if (before) map.addLayer({id: "lane-low-body-" + b, type: "fill", source: "lane-low-body", filter: ["==", ["get", "b"], b],
+                                paint: {"fill-color": "__LAND__", "fill-opacity": 1}}, before);
+    }
   }
   if (map.isStyleLoaded()) add(); else map.once("load", add);
 })();
@@ -415,16 +476,17 @@ def _low_body(g, s):
     """GeoJSON polygons of every lane of the low band (tunnels), as wide as the lane, round ends: the base under their faded fill (``_LOWBODY_JS``). None without any."""
     import geopandas as gpd
 
-    low = [i for i, r in enumerate(g.itertuples(index=False)) if _band(r) == "low"]
+    low = [i for i, r in enumerate(g.itertuples(index=False)) if _level(r) == "low"]
     if not low:
         return None
     u = g.to_crs(g.estimate_utm_crs())
     polys = [u.geometry.iloc[i].buffer(float(g["width_m"].iloc[i]) / 2, cap_style="round").simplify(0.03) for i in low]
     geo = gpd.GeoSeries(polys, crs=u.crs).to_crs(4326)
     rnd = lambda ring: [[round(x, 7), round(y, 7)] for x, y in ring]  # noqa: E731
+    rows = list(g.itertuples(index=False))
     return {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [rnd(p_.exterior.coords)] + [rnd(h.coords) for h in p_.interiors]}}
-        for p_ in geo if p_.geom_type == "Polygon" and not p_.is_empty]}
+        {"type": "Feature", "properties": {"b": _band(rows[i])}, "geometry": {"type": "Polygon", "coordinates": [rnd(p_.exterior.coords)] + [rnd(h.coords) for h in p_.interiors]}}
+        for i, p_ in zip(low, geo) if p_.geom_type == "Polygon" and not p_.is_empty]}
 
 
 # a connector is not a road to click: roadstyle's click and hover pick from what the map renders, so connectors are left out of that answer (the lanes below them are picked instead)
@@ -643,6 +705,17 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
                 hw = str(g["highway"].iloc[i]).split(";")[0].removesuffix("_link") if "highway" in g else ""
                 sub = float(ROAD_Z.get(hw, 4)) + (15.0 if i in onr else 0.0)
             g.iloc[i, g.columns.get_loc("draw_order")] = int(gp[4:]) * 90 + sub
+    if "roundabout" in g and g["roundabout"].any():
+        # a roundabout's ring lies over the arms that join it, whatever their colour: an arm of the ring's own class would end in a round cap on the ring
+        import pandas as pd
+        from roadstyle.render_web import ROAD_Z
+
+        if "draw_order" not in g:
+            g["draw_order"] = float("nan")
+        ring = (g["roundabout"].fillna(False).astype(bool) & ~g["connector"].fillna(False).astype(bool) & g["draw_order"].isna()
+                & ~pd.Series(lowgrp, index=g.index).str.startswith("low@")).to_numpy().nonzero()[0]
+        hw = _classes(g)
+        g.iloc[ring, g.columns.get_loc("draw_order")] = [float(ROAD_Z.get(hw[i], 4)) + 0.5 for i in ring]
     if on_road:           # a footpath mapped on a carriageway is drawn above it (roadstyle's per-edge order), else the road hides it
         if "draw_order" not in g:
             g["draw_order"] = float("nan")
@@ -650,6 +723,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
         g.iloc[keep, g.columns.get_loc("draw_order")] = 100.0
     opts = dict(directed_col="directed" if "use" in g else None, order_col="draw_order" if "draw_order" in g else None, color_options={"Road class": {}, "Lane use": {"color_by": colour_col, "colors": palette_colors}},
                 color_active="Lane use")
+    if "pos_fill" in g:       # the drawing order of each road: an interval [casing, fill] (docs/design/interval_draw_order.md); the layers go by position, not by band
+        opts.update(casing_level_col="pos_casing", fill_level_col="pos_fill")
     conn = g["connector"].fillna(False).astype(bool) if "connector" in g else None
     if "footway" in g:             # what a footway is, in words: a crosswalk is no "footway" (OSM tags both: highway=footway + footway=crossing)
         cx = g["crossing"] if "crossing" in g else None
@@ -669,7 +744,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
                 onroad.setdefault(r_, set()).add(first.get(lk, lk))
         g["footpaths"] = [", ".join(sorted(onroad[lk])[:5]) + (f" … ({len(onroad[lk])})" if len(onroad.get(lk, ())) > 5 else "") if lk in onroad else None
                           for lk in g["link_id"]]
-    g["level"] = [_LEVEL[_band(r)] for r in g.itertuples()]    # always in the popup: "ground" says it is no bridge
+    g["level"] = [_LEVEL[_level(r)] for r in g.itertuples()]    # always in the popup: "ground" says it is no bridge
     import pandas as pd
 
     if {"link_id", "lane_num"} <= set(g.columns):        # the link's twin: its other direction (the same line) or, for a road mapped as two one-way
@@ -714,6 +789,9 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     zebra, zfoot = _zebra_stripes(g, cr, s["zebra"]) if s.get("zebra") else ([], None)
     gaps, frame, rims = frames(g, s)             # a road and its sidewalk within frame_gap_m: one frame
     lines = lane_lines(g, s, avoid=zfoot, frame=frame, frame_edges=rims)
+    arrows = lane_arrows(g, turns, s.get("arrows"), avoid=zfoot)
+    if arrows:                                   # the painted arrows are the one direction marking: roadstyle's chevrons go
+        g["oneway"] = False
     fillets = junction_fillets(g, s)             # connectors included: their corners are the usual gaps
     if gaps:
         fillets = gaps if not fillets else {"type": "FeatureCollection", "features": fillets["features"] + gaps["features"]}
@@ -743,6 +821,11 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
         js += (_LINES_JS.replace("__LINES__", json.dumps(_compact(lines), separators=(",", ":")))
                .replace("__STYLES__", json.dumps(s["lines"])).replace("__ZOOM__", json.dumps(s["width_m_zoom"]))
                .replace("__MIN_DEVICE_PX__", json.dumps(s.get("line_min_device_px", 1))))
+    if arrows:
+        js += _ARROWS_JS.replace("__ARROWS__", json.dumps(arrows, separators=(",", ":"))).replace("__STYLE__", json.dumps(s["arrows"]))
+    names = street_names(g, arrows, s.get("names"), avoid=zfoot)
+    if names:
+        js += _NAMES_JS.replace("__NAMES__", json.dumps(names, separators=(",", ":"))).replace("__STYLE__", json.dumps(s["names"]))
     # the zebra goes above the lane arrows (none on the stripes); the lane lines stop at its footprint
     if zebra:
         fc = {"type": "FeatureCollection", "features": [
@@ -758,6 +841,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
             js += _LABELS_JS.replace("__ZOOM__", json.dumps(s["type_label_zoom"]))
     if not js:
         return m
+    js = _ANCHOR_JS + js                                 # the helper first: every script below places its layers with it
     html = m.html
     i = html.rfind("</body>")
     return type(m)(html[:i] + js + html[i:])

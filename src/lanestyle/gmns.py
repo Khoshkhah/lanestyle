@@ -9,6 +9,21 @@ def _cols(con, schema, table, db=None):
     return {c for (c,) in con.execute(q, args).fetchall()}
 
 
+def _ring_links(source_db, mode):
+    """The link ids (duckOSM edge ids) of a roundabout's ring: the OSM ``junction`` tag, read from ``source_db``'s edges; none without a source database."""
+    if not source_db:
+        return []
+    import duckdb
+
+    con = duckdb.connect(str(source_db), read_only=True)
+    try:
+        if "junction" not in _cols(con, mode, "edges") or "edge_id" not in _cols(con, mode, "edges"):
+            return []
+        return [r[0] for r in con.execute(f"SELECT edge_id FROM {mode}.edges WHERE junction IN ('roundabout', 'circular')").fetchall()]
+    finally:
+        con.close()
+
+
 def read_crossings(gmns_db):
     """duckOSM's ``gmns_driving.crossing`` / ``lane_crossing`` as one table, a row per crossing per lane it covers (``crossing_id``,
     ``lane_id``, ``start_lr``, ``end_lr``, ``across_from``, ``across_to``, ``to_left``, ``painted``, ``length``, ``crossing_type``,
@@ -28,8 +43,18 @@ def read_crossings(gmns_db):
 
 
 def from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
-    """:func:`_from_gmns` plus the crossings in ``lanes.attrs["crossings"]`` (see :func:`read_crossings`)."""
+    """:func:`_from_gmns` plus the crossings in ``lanes.attrs["crossings"]`` (see :func:`read_crossings`), and with a ``source_db`` the drawing order
+    ``pos_casing`` / ``pos_fill`` of each lane (:func:`lanestyle.levels.link_intervals`: its link's interval, both ends in roadstyle's positions)."""
     lanes, turns = _from_gmns(gmns_db, mode, source_db, modes)
+    if source_db:                                        # every lane (a connector: its link is its lane's) in its link's interval: roadstyle's drawing order
+        from lanestyle.levels import cut_lanes, link_intervals
+
+        iv, cuts = link_intervals(source_db)
+        if iv or cuts:
+            lanes["pos_casing"] = [iv.get(int(lk), (0, 0))[0] if lk == lk else 0 for lk in lanes["link_id"]]
+            lanes["pos_fill"] = [iv.get(int(lk), (0, 0))[1] if lk == lk else 0 for lk in lanes["link_id"]]
+            if cuts:                                     # a road that changes level along itself: drawn in pieces, each in its own interval
+                lanes = cut_lanes(lanes, cuts)
     lanes.attrs["crossings"] = read_crossings(gmns_db) if "driving" in (modes or [mode]) else None
     return lanes, turns
 
@@ -49,8 +74,11 @@ def _from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
     import pandas as pd
 
     tables, turn_tables, seen, seen_ways, modes_of, way_of = [], [], set(), set(), {}, {}
+    earlier = set()                                      # the lanes of the modes read before
     for i, m in enumerate(modes):
         lanes, turns = _from_gmns_mode(gmns_db, m, source_db)
+        if i:                                            # a later mode's movement that starts on an earlier mode's lane is that mode's walkers stepping off the road onto a footpath:
+            turns = turns[~turns["from_lane"].astype(str).isin(earlier)]     # not a turn of the car lane (it would give the lane a left / right arrow towards a footway)
         for link in set(lanes["link_id"].dropna()):      # every mode whose network has the link, kept or not
             modes_of.setdefault(link, []).append(m)
         if "osm_id" in lanes:
@@ -61,6 +89,7 @@ def _from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
         if "osm_id" in lanes:
             seen_ways |= set(lanes["osm_id"].dropna())
         tables.append(lanes)
+        earlier |= set(lanes["lane_id"].astype(str))
         turn_tables.append(turns)
     lanes = gpd.GeoDataFrame(pd.concat(tables, ignore_index=True), crs=4326)
     lanes["modes"] = lanes["link_id"].map(lambda l: ",".join(modes_of.get(l, [])))    # e.g. "driving,walking"
@@ -199,6 +228,7 @@ def _from_gmns_mode(gmns_db, mode, source_db):
         con.close()
     for c in [c for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id", "osm_id", "along_link_id") if c in df]:
         df[c] = df[c].astype("Int64")                       # BIGINT hash ids: never float64
+    df["roundabout"] = df["link_id"].isin(_ring_links(source_db, mode))
     if route:
         df["along_links"] = df["link_id"].map(route)
     df["connector"] = False

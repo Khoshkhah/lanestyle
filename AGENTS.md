@@ -34,6 +34,10 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
   are cut at junctions by the other links' lane surfaces. `render.py` ships them as compact columns
   (`_compact`), and `_LINES_JS` adds one MapLibre layer per band and type after that band's fill.
   The lanes themselves have no casing (`casing_m` 0).
+- `src/lanestyle/arrows.py`: painted lane arrows (`lane_arrows(lanes, turns, settings["arrows"])`): one generic arrow per lane from the moves that leave it, as lon/lat polygons in
+  metres, drawn by `_ARROWS_JS` after each band's fill. Fork, merge and end get none (`docs/design/lane_arrows.md`).
+- `src/lanestyle/street_names.py`: the street names in lanestyle's own layer (`_NAMES_JS`; roadstyle's `roads-labels` is hidden): along each road's centre, cut clear of the
+  arrows and zebras (`docs/design/street_names.md`).
 - `src/lanestyle/frames.py`: a road and its footpaths as one frame. `frames(lanes, s)` fills the gap between a footpath and the roads
   duckOSM matched it to (`along_link_id` / `along_links`, pieces of the same street included) in a tint of the footpath colour and returns the
   area whose outlines are left out. Drawing only: no geometry moves. The gap has no casing (`frame_casing` false).

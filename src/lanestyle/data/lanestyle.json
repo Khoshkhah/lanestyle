@@ -27,6 +27,8 @@
       "edge": {"color": "#5a5a5a", "width_m": 0.14, "dash_m": null}
     },
     "zebra": {"color": "#f7f7f2", "width_m": 3.0, "stripe_m": 0.5, "gap_m": 0.5},
+    "arrows": {"color": "#f4f4f4", "length_m": 4, "end_m": 10, "repeat_m": 60, "from_zoom": 18},
+    "names": {"color": "#f4f4f4", "halo": "#3a3a3a", "size": 12, "from_zoom": 17, "clear_m": 3},
     "junction_trim_m": 1,
     "fillet_m": 0,
     "frame_gap_m": 2.0,

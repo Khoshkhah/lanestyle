@@ -244,7 +244,7 @@ def test_lane_connectors_drawn_and_coloured(tmp_path):
     lanes, turns = ls.from_gmns(gmns, source_db=src)
     c = lanes.set_index("lane_id").loc["1_1>2_1"]
     assert bool(c["connector"]) and c["highway"] == "secondary" and c["from_lane"] == "1_1"
-    html = ls.render_lanes(lanes, turns=turns).html
+    html = ls.render_lanes(lanes, turns=turns, settings={"lanes": {"arrows": False}}).html     # roadstyle's chevrons: on a lane, not on a connector
     feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
     p = {f["properties"]["lane_id"]: f["properties"] for f in feats}
     assert p["1_1>2_1"]["oneway"] is False and p["1_1"]["oneway"] is True
@@ -535,7 +535,7 @@ def test_every_lane_is_coloured_by_its_mode_group(tmp_path):
 
 def test_a_footpath_has_no_arrow_and_a_tunnel_is_as_opaque_as_a_road(tmp_path):
     gmns, src = _with_walking(tmp_path)
-    html = ls.render_lanes(*ls.from_gmns(gmns, modes=("driving", "walking"))).html
+    html = ls.render_lanes(*ls.from_gmns(gmns, modes=("driving", "walking")), settings={"lanes": {"arrows": False}}).html
     feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
     arrow = {f["properties"]["lane_id"]: f["properties"]["oneway"] for f in feats}
     assert arrow["5_1"] in (0, False) and arrow["1_1"] in (1, True) and arrow["2_1"] in (1, True)   # walk: none; roads: yes
@@ -697,3 +697,172 @@ def test_a_hole_the_road_encloses_is_paved():
     centre = Point(18.0 + (side / 2) / (111320 * kx), 59.3 + (side / 2) / 111320)
     from shapely.geometry import shape
     assert any(shape(x["geometry"]).contains(centre) for x in f["features"])
+
+
+def test_every_lane_gets_one_arrow_and_a_long_one_repeats():
+    import geopandas as gpd
+    import pandas as pd
+    from shapely.geometry import LineString
+
+    from lanestyle.arrows import lane_arrows
+
+    # three lanes going north, 40 m: left + thru, thru, fork (a fork is shape: the plain direction arrow, no move arrow)
+    lane = lambda i, n=40: dict(lane_id=str(i), link_id=1, lane_num=i, use="auto", width_m=3.25, connector=False,   # noqa: E731
+                                geometry=LineString([(7.4 + i * 4e-5, 43.7), (7.4 + i * 4e-5, 43.7 + n / 111000)]))
+    g = gpd.GeoDataFrame([lane(1), lane(2), lane(3)], crs=4326)
+    t = pd.DataFrame({"from_lane": ["1", "1", "2", "3"], "to_lane": list("abcd"), "type": ["left", "thru", "thru", "diverge"]})
+    s = {"length_m": 4, "end_m": 10, "repeat_m": 60}
+    area = lambda f: __import__("shapely.geometry", fromlist=["shape"]).shape(f["geometry"]).area   # noqa: E731
+    fc = lane_arrows(g, t, s)
+    assert len(fc["features"]) == 3                                  # one each
+    assert area(fc["features"][0]) > 1.2 * area(fc["features"][2])   # left + thru is bigger than the plain arrow of the fork
+    assert len(lane_arrows(g, None, s)["features"]) == 3             # no turns table: still every lane's direction
+    long = gpd.GeoDataFrame([lane(1, 200)], crs=4326)
+    assert len(lane_arrows(long, None, s)["features"]) == 4          # the end arrow (190 m) and repeats 60 m apart (130, 70, 10)
+
+
+def test_painted_arrows_are_the_one_direction_marking():
+    gmns, src = _dbs(__import__("pathlib").Path(__import__("tempfile").mkdtemp()))
+    html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
+    feats = json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])["sources"]["roads"]["data"]["features"]
+    assert not any(f["properties"].get("oneway") for f in feats) and "lane-arrows" in html     # roadstyle's chevrons off, ours on
+
+
+def test_street_names_go_clear_of_the_arrows():
+    import geopandas as gpd
+    from shapely.geometry import LineString, box
+
+    from lanestyle.street_names import street_names
+
+    # one 100 m one-way link going north with a name; an arrow at its middle: the name's line is cut there
+    n = 100 / 111000
+    g = gpd.GeoDataFrame([dict(lane_id="1", link_id=1, lane_num=1, use="auto", width_m=3.25, connector=False, name="Rue X",
+                               geometry=LineString([(7.4, 43.7), (7.4, 43.7 + n)]))], crs=4326)
+    s = {"clear_m": 3}
+    whole = street_names(g, None, s)
+    assert len(whole["features"]) == 1
+    mid = 43.7 + n / 2
+    arrow = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": {
+        "type": "Polygon", "coordinates": [[[7.39999, mid - 2e-5], [7.40001, mid - 2e-5], [7.40001, mid + 2e-5], [7.39999, mid + 2e-5], [7.39999, mid - 2e-5]]]}}]}
+    cut = street_names(g, arrow, s)
+    assert len(cut["features"]) == 2 and cut["features"][0]["properties"]["name"] == "Rue X"
+
+
+def test_an_arrow_slides_clear_of_a_zebra():
+    import geopandas as gpd
+    from shapely.geometry import LineString, box
+
+    from lanestyle.arrows import lane_arrows
+
+    n = 100 / 111000                                                  # one 100 m lane north, its arrow at 90 m
+    g = gpd.GeoDataFrame([dict(lane_id="1", link_id=1, lane_num=1, use="auto", width_m=3.25, connector=False,
+                               geometry=LineString([(7.4, 43.7), (7.4, 43.7 + n)]))], crs=4326)
+    s = {"length_m": 4, "end_m": 10, "repeat_m": 0}
+    top = lambda fc: max(y for f in fc["features"] for _, y in f["geometry"]["coordinates"][0])   # noqa: E731
+    z = box(7.3999, 43.7 + 80 / 111000, 7.4001, 43.7 + 92 / 111000)    # a zebra over metres 80 to 92
+    assert top(lane_arrows(g, None, s, avoid=z)) < 43.7 + 80 / 111000   # slid back below it
+    assert top(lane_arrows(g, None, s)) > 43.7 + 80 / 111000
+
+
+def test_a_roundabouts_ring_is_read_from_the_source_junction_tag(tmp_path):
+    import duckdb
+
+    from lanestyle.gmns import _ring_links
+
+    db = tmp_path / "src.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE SCHEMA driving; CREATE TABLE driving.edges (edge_id BIGINT, junction VARCHAR)")
+    con.execute("INSERT INTO driving.edges VALUES (1, 'roundabout'), (2, NULL), (3, 'circular')")
+    con.close()
+    assert sorted(_ring_links(db, "driving")) == [1, 3] and _ring_links(None, "driving") == []
+
+
+def test_a_tunnel_sidewalks_frame_does_not_cut_a_ground_footpaths_outline():
+    """Kaveh (2026-10-03, lane 7929000899462360833_1): a park path at ground level crosses a tunnel road's sidewalks; the sidewalks' frame (layer -1) used to
+    cut the path's outline where they overlap. A frame belongs to its own level."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.frames import frames
+    from lanestyle.lines import lane_lines
+
+    def row(lid, link, use, hw, tun, pts, w, along=None):
+        return dict(lane_id=lid, link_id=link, lane_num=1, use=use, highway=hw, tunnel="yes" if tun else None, layer="-1" if tun else None, width_m=w,
+                    connector=False, along_link_id=along, from_node_id=link * 10, to_node_id=link * 10 + 1, geometry=LineString(pts))
+    n = 1e-5
+    g = gpd.GeoDataFrame([
+        row("road_1", 1, "auto", "tertiary", True, [(18.0, 59.3), (18.0 + 60 * n, 59.3)], 6.0),                           # the tunnel road
+        row("side_1", 2, "walk", "footway", True, [(18.0, 59.3 + 5 * n), (18.0 + 60 * n, 59.3 + 5 * n)], 2.0, along=1),    # its sidewalk, framed with it
+        row("park_1", 3, "walk", "pedestrian", False, [(18.0 + 30 * n, 59.3 - 30 * n), (18.0 + 30 * n, 59.3 + 40 * n)], 2.0),      # a ground path across both
+    ], crs=4326)
+    s = ls.lane_settings()
+    _, area, _ = frames(g, s)
+    assert area is not None and set(area) == {"low@-1"}                    # only the tunnel level is framed
+    park = {f["properties"]["b"] for f in lane_lines(g, s, frame=area)["features"]}
+    assert "ground" in park
+
+
+def test_a_lanes_band_is_its_fill_position_when_the_table_has_a_drawing_order(tmp_path):
+    """docs/design/interval_draw_order.md: with ``pos_fill`` the band a lane's layers go after is the position (a bridge keeps its deck band); without it, roadstyle's three bands."""
+    from types import SimpleNamespace as R
+
+    from lanestyle.lines import _band, _group
+
+    assert _band(R(layer="-1", tunnel="yes", bridge=None)) == "low"                     # no drawing order: as before
+    assert _band(R(layer="-1", tunnel="yes", bridge=None, pos_fill=-2)) == "-2"
+    assert _group(R(layer="-1", tunnel="yes", bridge=None, pos_fill=-2)) == "low@-1"       # what interacts stays the level: a ring at two positions is one surface
+    assert _band(R(layer=None, tunnel=None, bridge=None, pos_fill=0)) == "0"
+    assert _band(R(layer="1", tunnel=None, bridge="yes", pos_fill=2)) == "bridge"
+
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    lanes["pos_casing"], lanes["pos_fill"] = 0, 0
+    lanes.loc[lanes.index[0], ["pos_casing", "pos_fill"]] = 2
+    html = ls.render_lanes(lanes, turns=turns).html
+    assert "roads-fill-lv2" in html and "lsAnchor" in html                               # roadstyle's layer of position 2, and our layers placed by position
+
+
+def test_with_a_drawing_order_the_outline_is_one_casing_per_carriageway_at_its_casing_position():
+    """docs/design/interval_draw_order.md: no per-lane edge, no hand cuts: a link's lanes give one boundary line at the casing position; the paint (dividers) stays at the fill position."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.lines import lane_lines
+
+    n = 1e-5
+    rows = [dict(lane_id=f"{k}_{i}", link_id=k, lane_num=i, use="auto", highway="primary", width_m=3.25, connector=False, lanes=2, pos_casing=0, pos_fill=2,
+                 from_node_id=k, to_node_id=k + 1, geometry=LineString([(18.0 + 3e-5 * i, 59.3 + 80 * n * k), (18.0 + 3e-5 * i, 59.3 + 80 * n * (k + 1))]))
+            for k in (1, 2) for i in (1, 2)]
+    g = gpd.GeoDataFrame(rows, crs=4326)
+    fc = lane_lines(g, ls.lane_settings())
+    edge = [f for f in fc["features"] if f["properties"]["t"] == "edge"]
+    assert len(edge) == 2 and {f["properties"]["b"] for f in edge} == {"0"}            # one per link, at the casing position
+    assert {f["properties"]["b"] for f in fc["features"] if f["properties"]["t"] == "divider"} == {"2"}     # the paint at the fill position
+
+
+def test_a_road_that_changes_level_along_itself_is_drawn_in_pieces():
+    """docs/design/interval_draw_order.md step 4: ``Levels.cuts`` -> the lane of the cut road's link becomes its first piece, the others are appended (``piece``), each in its own interval."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.levels import cut_lanes
+
+    g = gpd.GeoDataFrame([dict(lane_id="a_1", link_id=7, pos_casing=0, pos_fill=0, geometry=LineString([(18.0, 59.3), (18.001, 59.3)]))], crs=4326)
+    cuts = {"7": {"bounds": [0.0, 25.0, 100.0], "intervals": [(-2, 0), (-2, -2)], "edges": [7]}}
+    out = cut_lanes(g, cuts)
+    assert out["lane_id"].tolist() == ["a_1", "a_1"] and out["piece"].tolist() == [False, True]
+    assert [(a, b) for a, b in zip(out["pos_casing"], out["pos_fill"])] == [(-2, 0), (-2, -2)]
+    first, second = out.geometry.iloc[0], out.geometry.iloc[1]
+    assert abs(first.length / g.geometry.iloc[0].length - 0.25) < 1e-9 and first.coords[-1] == second.coords[0]         # a quarter, then the rest
+
+
+def test_walkers_stepping_off_a_road_are_no_turn_of_the_car_lane(tmp_path):
+    """Kaveh (2026-10-03, lane 8804188488117379077_1): the walking mode's movement from a road onto a footway gave the car lane a left / right turn (1,443 of 8,502 car-lane turns in Monaco).
+    A later mode's movement that starts on an earlier mode's lane is dropped; the footway's own movements stay."""
+    gmns, _ = _with_walking(tmp_path)
+    con = duckdb.connect(str(gmns))
+    con.execute("INSERT INTO gmns_walking.movement VALUES (2,NULL,NULL,5,NULL,NULL,'left')")      # the road onto the footway
+    con.close()
+    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
+    pairs = set(zip(turns["from_lane"], turns["to_lane"]))
+    assert ("2_1", "5_1") not in pairs and ("5_1", "2_1") in pairs

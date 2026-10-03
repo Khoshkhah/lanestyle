@@ -1,7 +1,7 @@
 """A road and its sidewalk as one frame (docs/design/lanestyle_on_roadstyle.md): where a sidewalk lies within ``frame_gap_m`` of the
 road it runs along (duckOSM's ``along_link_id``), the gap between them is filled and no outline is drawn between them. Drawing only:
 no geometry of the data moves."""
-from lanestyle.lines import _band, _group
+from lanestyle.lines import _band, _group, _level
 
 
 def frames(lanes, s):
@@ -28,6 +28,7 @@ def frames(lanes, s):
             if isinstance(nm, str) and nm:
                 street[lk] = nm
     band = [_band(r) for r in g.itertuples(index=False)]
+    tun = [_level(r) == "low" for r in g.itertuples(index=False)]         # a verge in a tunnel is drawn with the tunnel look (a hatch over a faded fill)
     grp = [_group(r) for r in g.itertuples(index=False)]       # what a lane may be framed with: its level (layer -1 and -2 are two levels, one draw band)
     cls = list(g["highway"]) if "highway" in g else [None] * len(g)
     conn = g["connector"].tolist() if "connector" in g else [False] * len(g)
@@ -88,14 +89,14 @@ def frames(lanes, s):
         # the strips, and the closing of footpath + road (it fills the wedge where the footpath goes from one road to the next); no casing on the gap, so its rounded ends show nothing
         add = shapely.union_all([fill, both.buffer(rr).buffer(-rr)]).difference(both)
         closed = shapely.union_all([both, add])
-        inner.append(closed)
+        inner.append((grp[i], closed))
         nearest = min(road, key=lambda j: surf.iloc[i].distance(surf.iloc[j]))
         word = "sidewalk" if kind[i] != "adjacent" else "footpath"
         paint = paints["adjacent" if kind[i] == "adjacent" else "sidewalk"]
         info = f"frame gap · road {ref[nearest]} · {word} {ref[i]} · {surf.iloc[i].distance(ru):.1f} m apart"
         for q in getattr(add, "geoms", [add]):
             if q.geom_type == "Polygon" and q.area > 0.05:
-                gaps.append((q, cls[nearest], band[i], info, paint))
+                gaps.append((q, cls[nearest], band[i], info, paint, tun[i]))
                 if casing:
                     edge = q.boundary.difference(both.buffer(0.05))          # the sides that touch neither: that is where the verge has an edge
                     if not edge.is_empty and edge.length >= 0.3:
@@ -104,9 +105,10 @@ def frames(lanes, s):
         return None, None, []
     geo = gpd.GeoSeries([q for q, *_ in gaps], crs=g.crs).to_crs(4326)
     rnd = lambda ring: [[round(x, 7), round(y, 7)] for x, y in ring]  # noqa: E731
-    feats = [{"type": "Feature", "properties": {"cls": c, "b": b, "c": pt, "info": info},
+    feats = [{"type": "Feature", "properties": {"cls": c, "b": b, "c": pt, "info": info, **({"tn": 1} if tn else {})},
               "geometry": {"type": "Polygon", "coordinates": [rnd(gm.exterior.coords)] + [rnd(h.coords) for h in gm.interiors]}}
-             for (_, c, b, info, pt), gm in zip(gaps, geo, strict=True)]
-    area = gpd.GeoSeries([shapely.union_all(inner)], crs=g.crs).to_crs(4326).iloc[0]
+             for (_, c, b, info, pt, tn), gm in zip(gaps, geo, strict=True)]
+    levels = sorted({gp for gp, _ in inner})
+    area = dict(zip(levels, gpd.GeoSeries([shapely.union_all([q for gp, q in inner if gp == lv]) for lv in levels], crs=g.crs).to_crs(4326)))
     ed = gpd.GeoSeries([e for _, e in rims], crs=g.crs).to_crs(4326) if rims else []
     return {"type": "FeatureCollection", "features": feats}, area, [(b, e) for (b, _), e in zip(rims, ed, strict=True)]
