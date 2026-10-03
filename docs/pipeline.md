@@ -23,11 +23,12 @@ layer levels.
 
 ## Prerequisites
 
-- **duckOSM** checked out and installed (its own env): `pip install -e .` in `../duckOSM`.
-- **lanestyle** installed (this repo): `pip install -e .` — deps `roadstyle>=0.11`, `geopandas`, `duckdb`.
+- **duckOSM** installed: `pip install duckosm` (0.1.0 or later; to work on duckOSM itself, check it out and `pip install -e .` in `../duckOSM`).
+- **lanestyle** installed: `pip install lanestyle` (0.2.1 or later; or `pip install -e .` in this repo) — deps `roadstyle>=0.11`, `geopandas`, `duckdb`.
+- Both together: `pip install lanestyle "duckosm[viz]"`.
 - An OSM extract (`.osm.pbf`) for your area (e.g. from Geofabrik), or an existing duckOSM db.
 
-Paths below assume the standard workspace layout (`duckOSM/` and `lanestyle/` as siblings).
+Paths below assume a development workspace with `duckOSM/` and `lanestyle/` as siblings; with the packages from PyPI, use your own paths.
 
 ---
 

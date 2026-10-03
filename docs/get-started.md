@@ -52,7 +52,7 @@ Lanes come from [duckOSM](https://github.com/Khoshkhah/duckOSM), which places ea
 OpenStreetMap road and works out the lane-to-lane turns, as a GMNS database:
 
 ```bash
-pip install "duckosm @ git+https://github.com/Khoshkhah/duckOSM"
+pip install duckosm
 curl -LO https://download.geofabrik.de/europe/monaco-latest.osm.pbf
 duckosm build --pbf monaco-latest.osm.pbf -o monaco.duckdb -m driving
 duckosm gmns monaco.duckdb -m driving -o monaco_gmns.duckdb
