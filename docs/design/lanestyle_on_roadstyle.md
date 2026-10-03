@@ -361,3 +361,13 @@ The small rounded bump at that corner stays: it is the round end of the connecto
 
 Holes the road encloses (2026-10-02, "you choose" for the two dead-end spurs near lon 7.41917 lat 43.73886): the heart-shaped end is two real 5 m wide stubs 2.9 m apart; filling the notch between the lobes adds 0.4 m2 and changes nothing, so the shape stays (narrowing the U-turn, no U-turn and square lane ends were tried and are no better, see `renders/uturn/`).
 What is a defect is a 20 cm white slit inside that blob, where a connector meets a lane end. The fillet closing (`junctions.junction_fillets`) drops what is under 0.3 m2 or thinner than 24 cm, and is off by default (`fillet_m` 0). Monaco's lane surfaces enclose 1,529 holes under 1 m2 (median 2 cm2, so mostly invisible; 533 of 1 cm2 or more, 197 of 0.1 m2 or more, 65 of 0.3 m2 or more, the largest 0.9 m2). A hole the surface encloses is never a real feature (a median is wider and open), so `junction_fillets` now always paves enclosed holes from 0.005 to 1 m2, independent of `fillet_m`: 690 small polygons on the docs sample, the page 0.27 MB larger (4.6 to 4.9 MB). Test `test_a_hole_the_road_encloses_is_paved`.
+
+A roundabout's ring lies over its arms (2026-10-03, Kaveh: "the green colour went to the roundabout", lane `3042034194854890259_2`, the ring at lon 7.43085 lat 43.74545).
+Arms that carry walking are green (`driving,walking`), the ring is grey; an arm of the ring's own class (`primary`) tied with it in roadstyle's draw order and ended
+in a round cap on top of the ring. The reader now flags the ring (`roundabout`: the OSM `junction` tag of the link, read from `source_db`'s edges), and
+`render_lanes` gives a ring lane the draw order of its class + 0.5, so the arms' caps lie under it. No lane moves; no roadstyle change.
+
+A frame belongs to its level (2026-10-03, Kaveh: "there is casing issue here", lane `7929000899462360833_1`, lon 7.41412 lat 43.73100, Monaco): a park path at ground level crosses the sidewalks
+of the Avenue Pasteur tunnel (layer -1). `frames()` returned one area for every level, and `lane_lines` left the outline out inside it, so the ground path lost its outline where it
+crosses the tunnel sidewalks' frame. `frames()` now returns the area per level (`{lines._group: lon/lat polygon}`) and `lane_lines` cuts a level's lines and footpath outline by its own
+frames only. Test `test_a_tunnel_sidewalks_frame_does_not_cut_a_ground_footpaths_outline`.

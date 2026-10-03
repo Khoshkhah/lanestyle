@@ -64,6 +64,10 @@ nav:
       - design/index.md
       - lanestyle on roadstyle: design/lanestyle_on_roadstyle.md
       - Pedestrian lanes: design/pedestrian_lanes.md
+      - Painted lane arrows: design/lane_arrows.md
+      - Street names: design/street_names.md
+      - Drawing order from intervals: design/interval_draw_order.md
+      - Footways on the carriageway: design/footway_overlap.md
       - GMNS CSV input: design/gmns_csv_input.md
       - One file, link_osm: design/gmns_link_osm.md
 
