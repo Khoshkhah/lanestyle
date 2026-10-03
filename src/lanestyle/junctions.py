@@ -15,8 +15,11 @@ def _rank(cls):
     return _CLASS_ORDER.index(c) if c in _CLASS_ORDER else len(_CLASS_ORDER)
 
 
+_MIN_HOLE_M2, _MAX_HOLE_M2 = 0.005, 1.0       # enclosed holes paved: under 50 cm2 is a numerical sliver nobody sees, over 1 m2 may be real
+
+
 def junction_fillets(lanes, s):
-    """GeoJSON polygons (``cls``: the road class whose colour to use, ``b``: the band) of the gaps
+    """GeoJSON polygons (``cls``: the road class whose colour to use, ``b``: the band) of every hole the lane surfaces enclose (under 1 m2: always) and, when ``fillet_m`` is set, of the gaps
     narrower than ``2 × fillet_m`` anywhere between lane surfaces (lanes and connectors): the whole
     surface is closed (grown by ``fillet_m``, shrunk back) and what the closing adds is drawn under
     the lanes, in the colour and band of the nearest lane. Corners at junctions, the slivers between
@@ -25,14 +28,25 @@ def junction_fillets(lanes, s):
     import shapely
 
     r_m = float(s.get("fillet_m") or 0)
-    if not r_m or not len(lanes):
+    if not len(lanes):
         return None
     g = lanes.to_crs(lanes.estimate_utm_crs())
     surf = g.geometry.buffer(g["width_m"] / 2, cap_style="round")
     u = shapely.union_all(surf.to_numpy())
-    add = shapely.make_valid(u.buffer(r_m).buffer(-r_m).difference(u)).simplify(0.05)
-    parts = [q for p in getattr(add, "geoms", [add]) for q in getattr(shapely.make_valid(p), "geoms", [shapely.make_valid(p)])
-             if q.geom_type == "Polygon" and q.area > 0.3 and not q.buffer(-0.12).is_empty and q.is_valid]
+    parts = []
+    if r_m:                                                  # the gaps between surfaces (off by default); the enclosed holes below are always paved
+        add = shapely.make_valid(u.buffer(r_m).buffer(-r_m).difference(u)).simplify(0.05)
+        parts = [q for p in getattr(add, "geoms", [add]) for q in getattr(shapely.make_valid(p), "geoms", [shapely.make_valid(p)])
+                 if q.geom_type == "Polygon" and q.area > 0.3 and not q.buffer(-0.12).is_empty and q.is_valid]
+    # a hole the surface encloses is never a real feature (a pillar, a median is wider): pave it, however small and thin; the closing above
+    # drops what is under 0.3 m2 or thinner than 24 cm, which left white slits between a connector and a lane end (Kaveh, 2026-10-02: the dead-end spurs)
+    from shapely.geometry import Polygon
+    paved = shapely.union_all(parts) if parts else None
+    for p in getattr(u, "geoms", [u]):
+        for ring in p.interiors:
+            q = Polygon(ring)
+            if _MIN_HOLE_M2 <= q.area < _MAX_HOLE_M2 and q.is_valid and (paved is None or q.difference(paved).area > 0.5 * q.area):
+                parts.append(q.simplify(0.01))
     if not parts:
         return None
     tree = shapely.STRtree(g.geometry.to_numpy())

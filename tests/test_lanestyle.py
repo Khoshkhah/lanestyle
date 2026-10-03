@@ -676,3 +676,24 @@ def test_the_roads_box_has_no_road_class_rows(tmp_path):
     gmns, src = _dbs(tmp_path)
     html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
     assert 'label:not(.ls-use):not(.flt-grade)' in html and 'l.style.display = "none"' in html
+
+
+def test_a_hole_the_road_encloses_is_paved():
+    """Four lanes in a square loop leave a 0.3 m square hole between their surfaces: it is under the 0.3 m2 / 24 cm rule of the closing, and was left white
+    (a slit between a connector and a lane end at Monaco's dead-end spurs). An enclosed hole is never a real feature: it gets a fillet."""
+    import math
+
+    import geopandas as gpd
+    from lanestyle.junctions import junction_fillets
+    from shapely.geometry import LineString, Point
+
+    kx = math.cos(math.radians(59.3))
+    ll = lambda pts: LineString([(18.0 + x / (111320 * kx), 59.3 + y / 111320) for x, y in pts])      # noqa: E731
+    side = 3.3                                            # lane width 3.0: the hole between the four surfaces is 0.3 m square
+    rows = [dict(lane_id=str(i), width_m=3.0, highway="service", geometry=ll(seg))
+            for i, seg in enumerate([[(0, 0), (side, 0)], [(side, 0), (side, side)], [(side, side), (0, side)], [(0, side), (0, 0)]])]
+    f = junction_fillets(gpd.GeoDataFrame(rows, crs=4326), ls.lane_settings())
+    assert f is not None
+    centre = Point(18.0 + (side / 2) / (111320 * kx), 59.3 + (side / 2) / 111320)
+    from shapely.geometry import shape
+    assert any(shape(x["geometry"]).contains(centre) for x in f["features"])
