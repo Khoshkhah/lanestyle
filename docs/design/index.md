@@ -12,7 +12,9 @@
 - [Painted lane arrows](lane_arrows.md): a generic arrow per lane for turn, straight and combined
   movements; none for fork and merge.
 - [Street names](street_names.md): lanestyle's own names, in the arrows' colour and clear of them.
-- [The drawing order from per-edge intervals](interval_draw_order.md): roadstyle 0.12's `casing_level_col` / `fill_level_col` instead of bands and hand cuts.
+- [Roads for the casing, items for the fill](lanestyle_on_roadstyle_items.md): roadstyle draws the casing of each road (a link) and not its fill; lanes, connectors, lines, zebra, arrows and names are items attached to it, in one order scale; the looks are a theme.
+- [The casing and fill numbers](lanestyle_on_roadstyle_levels.md): roadstyle computes the drawing order of the lane table, a connector below every road; the three bands are gone.
+- [The drawing order from per-edge intervals](interval_draw_order.md) (superseded): roadstyle 0.12's `casing_level_col` / `fill_level_col` instead of bands and hand cuts.
 - [Footways on the carriageway](footway_overlap.md): 19 % of matched footways lie on the road's lanes in Monaco; why lane width alone does not fix it.
 
 The lane placement itself lives in duckOSM, with its own notes: paired carriageways, lane

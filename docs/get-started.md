@@ -4,7 +4,7 @@
 
 ## Install
 
-Python 3.10 or newer. roadstyle 0.11 or newer (line widths in metres), geopandas, shapely 2,
+Python 3.10 or newer. roadstyle 0.15 or newer (line widths in metres, the casing and fill numbers, items attached to roads), geopandas, shapely 2,
 duckdb and pandas come with it.
 
 ```bash
@@ -81,7 +81,7 @@ python render_lanes.py monaco_gmns.duckdb monaco.html
 | | |
 |---|---|
 | **Lanes** | one line per lane, exactly its width in metres from zoom 16 on, roadstyle's class widths below; coloured by road class (the `mono` palette) |
-| **Lane lines** | dashed dividers between lanes of one direction, a solid centre line between the two directions, grey edges; they stop at junctions |
+| **Lane lines** | dashed dividers between lanes of one direction, a solid centre line between the two directions; they stop at junctions |
 | **Levels** | tunnels under the street, bridges over it, in the order of the OSM `layer` tag |
 | **Labels** | the street name once per road; each lane's turns are in its popup (`type_label_zoom` draws them along the lane) |
 | **Bus, bike and walk lanes** | painted over the palette; their colours are rows in the Roads box, which lists the lane uses and Bridges / Tunnels, not the road classes. Footpaths and on-road bike lanes are drawn narrow; `modes=("driving", "walking")` puts the roads and their sidewalks on one map |

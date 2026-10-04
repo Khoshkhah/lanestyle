@@ -20,27 +20,17 @@ anything.** `docs/pipeline.md` walks the whole chain: `.osm.pbf` → duckOSM →
   table (later modes add only the links the earlier ones lack: footpaths, not the roads walked on). Levels come from the GMNS `link`
   if it has `bridge` / `tunnel` / `layer`, else from `source_db` (the duckOSM db:
   `link_id` = `<mode>.edges.edge_id`). A NULL lane range in `movement` means every lane.
-- `src/lanestyle/render.py`: the engine.
-  - `render_lanes(lanes, turns, palette="mono", settings, **kw)` calls `roadstyle.render_edges` with
-    `width_m_col="width_m"`. It adds a "Lane use" `color_options` entry for bus, bike and walk lanes, and defaults a null width by use
-    (`_widths`: `width_m_by_use`).
-  - It appends a click script (`_CLICK_JS`, using `rsQuery` / `rsGetProps` / `rsColor`) and returns
-    roadstyle's `WebMap`. Extra keywords go straight to `render_edges`.
-  - `write_serve` writes a `serve.py` next to a page.
-- `src/lanestyle/lines.py`: the lane lines (step 2b). `lane_lines(lanes, settings)` offsets each
-  lane's centre line by half its width. It returns dividers, centre lines (drawn once, by the smaller
-  of the link and its `reverse_link_id`, or of two one-way links whose lane 1 left edges lie on each
-  other, `_paired`) and edges, with roadstyle's band mirrored in `_band`. Lines
-  are cut at junctions by the other links' lane surfaces. `render.py` ships them as compact columns
-  (`_compact`), and `_LINES_JS` adds one MapLibre layer per band and type after that band's fill.
-  The lanes themselves have no casing (`casing_m` 0).
+- `src/lanestyle/levels.py`: roadstyle's four numbers (`casing_start/level/end`, `fill_level`) of each road (a link). `link_levels(roads, source_db)` reads duckOSM's `visualization.edge_levels` when the file has it (`stored_levels`: a stale table or an unknown id is an error saying to run `duckosm levels`), else `rs.compute_levels` on the complete band (`tags_band`). `by_link` gives the numbers of the link of each lane.
+- `src/lanestyle/items.py`: `link_roads` (one road row per link: carriageway line, width = lanes + casing both sides) and the items (`lane_items` polygons, `tag`, `stripes`); the order scale: connector -1, lane 0, lines 1, zebra 2, arrows 3, names 4 (`docs/design/lanestyle_on_roadstyle_items.md`).
+- `src/lanestyle/render.py`: the engine. `render_lanes(lanes, turns, palette, settings, source_db=None, **kw)` builds the roads, their numbers, the items, and calls `roadstyle.render_edges(roads, road_fill=False, overlays=[rs.Overlay(edge_col="edge_id", order_col="order", color_col=..., style=...)])`: roadstyle draws each road's casing, the items are the fill. The looks are the theme `styles/themes/lanestyle.yaml` (`lane_theme()`), merged into `settings=`. It appends the click script (`_CLICK_JS`, on the overlay `lanes`) and returns roadstyle's `WebMap`; extra keywords go to `render_edges`. `write_serve` writes a `serve.py` next to a page.
+- `src/lanestyle/lines.py`: the lane lines. `lane_lines(lanes, s, avoid, frame)` offsets each lane's centre line by half its width and returns dividers and centre lines (a centre line once, by the smaller of the link and its `reverse_link_id`, or of two one-way links, `_paired`), cut at junctions by the other links' lane surfaces; each carries `edge_id`. No edge lines: the road's casing is the outline.
 - `src/lanestyle/arrows.py`: painted lane arrows (`lane_arrows(lanes, turns, settings["arrows"])`): one generic arrow per lane from the moves that leave it, as lon/lat polygons in
-  metres, drawn by `_ARROWS_JS` after each band's fill. Fork, merge and end get none (`docs/design/lane_arrows.md`).
-- `src/lanestyle/street_names.py`: the street names in lanestyle's own layer (`_NAMES_JS`; roadstyle's `roads-labels` is hidden): along each road's centre, cut clear of the
+  metres, an item (order 3) of their lane's road. Fork, merge and end get none (`docs/design/lane_arrows.md`).
+- `src/lanestyle/street_names.py`: the street names an item (order 4; roadstyle's own names are off): along each road's centre, cut clear of the
   arrows and zebras (`docs/design/street_names.md`).
 - `src/lanestyle/frames.py`: a road and its footpaths as one frame. `frames(lanes, s)` fills the gap between a footpath and the roads
   duckOSM matched it to (`along_link_id` / `along_links`, pieces of the same street included) in a tint of the footpath colour and returns the
-  area whose outlines are left out. Drawing only: no geometry moves. The gap has no casing (`frame_casing` false).
+  area whose outlines are left out. Drawing only: no geometry moves. The gap has no casing .
 - `src/lanestyle/data/lanestyle.json`: lanestyle's defaults (colours, `default_width_m`, `casing_m`,
   `width_m_zoom`, `lines`, `junction_trim_m`). `lane_settings()` merges them with a `lanestyle.json` in the current folder, then
   with `settings["lanes"]`.
@@ -70,7 +60,7 @@ lanestyle itself needs to be on the path:
 PY="env PYTHONPATH=src $HOME/miniconda3/envs/roadstyle/bin/python"
 $PY -m pytest -q tests                                                     # all tests
 $PY -m pytest -q tests/test_lanestyle.py::test_from_gmns_lane_table_and_turns
-$PY render_lanes.py data/monaco_gmns.duckdb out.html --source-db data/monaco.duckdb
+$PY render_lanes.py data/monaco_gmns.duckdb out.html --source-db ../duckOSM/monaco.duckdb
 $PY renders/lanes/build.py      # the Monaco test map -> renders/lanes/
 $PY renders/lanes/check_spot.py monaco LON LAT TAG 19.5 20.5   # screenshots of a reported spot
 $PY docs/build_maps.py                                  # the docs' live map (docs/maps/, not committed)
@@ -84,8 +74,9 @@ GeoParquet (the no-duckOSM quickstart and the live map's input); rebuild it from
 GMNS export changes.
 
 The tests build a tiny GMNS db and source db in `tmp_path`, so they need no real data. Test data
-lives in `data/` (gitignored): `monaco.duckdb` and `monaco_gmns.duckdb`, rebuilt with
-`duckosm gmns data/monaco.duckdb -m driving -o data/monaco_gmns.duckdb`.
+is **duckOSM's own Monaco database**, `../duckOSM/monaco.duckdb` (built there with `duckosm build --config config/sample_monaco.yaml`, then `duckosm levels monaco.duckdb`): it is the
+`source_db` of every build, check and map here, and lanestyle never keeps or builds a copy of it (a copy drifts out of step: edge_ids, levels). Only the GMNS files are lanestyle's, in `data/`
+(gitignored), made from it: `duckosm gmns ../duckOSM/monaco.duckdb -m driving -o data/monaco_gmns.duckdb` and `... -m driving -m walking -o data/monaco_walk_gmns.duckdb`; rebuild both whenever duckOSM's Monaco is rebuilt.
 
 ## Footpaths, levels, connectors (2026-10-02)
 
@@ -94,10 +85,9 @@ Build with `duckosm gmns SRC -m driving -m walking -o OUT`, read with `ls.from_g
 `gmns_lane_connectors.md`, `gmns_walking_frame.md`.
 
 - **A tunnel differs from ground in colour and pattern only.** Outlines, joints, matching and draw order follow the same rules; the guard test is
-  `test_a_tunnel_differs_from_ground_in_look_only`. Layers are levels: roadstyle draws every layer below ground in one `low` band, but `lines._group`
-  (`low@-1`, `low@-2`) decides what interacts, layer -1 lies over -2 (draw order `layer * 90 + rank`, lower layers' lines cut by `lines.above`).
-  Layers above ground are still one band each.
-- **Connectors** take the modes both their lanes share, are drawn under the lanes (roadstyle per-edge order: turns -300, straight -250) and are not
+  `test_a_tunnel_differs_from_ground_in_look_only`. Layers are levels: `lines._group`
+  (`low@-1`, `low@-2`) decides what interacts; each layer is its own position in roadstyle's numbers, so layer -1 lies over -2 by itself.
+- **Connectors** take the modes both their lanes share, are drawn under the lanes (order 0, below every other road, in the order roadstyle's solver is given) and are not
   clickable (`connectors_clickable`). A bike lane's connector is blue and 1.5 m wide. Their round ends are roadstyle's line cap (open: flat-ended shapes).
 - **A footpath on a road** (60 % of its area on the road of its level) is drawn above it; **a crossing tagged by mistake** (long and off a road, or matched along one) is drawn as a footway.
 - **Street View**: `render_lanes(..., street_view=True)` for roadstyle's page, or `street_view_key=KEY` for the map's own toggle (a real panorama needs billing on the Google project).
@@ -113,11 +103,8 @@ Build with `duckosm gmns SRC -m driving -m walking -o OUT`, read with `ls.from_g
   on 2026-10-01: before, left-hand two-way roads counted from the centre line). `lines.py` still draws a
   two-way road's centre line at lane 1's left edge: right for right-hand traffic only, so left-hand maps
   need that changed (`ponytail:` note in `lines.py`).
-- Tunnels and bridges follow roadstyle's **levels and looks** (roadstyle `docs/design/levels_and_looks.md`): the level
-  alone decides the band (low, ground, high), a tunnel is a lane of the low band with the tunnel look (two-tone casing, light
-  dashes, faded fill), a bridge of the high band with the deck look. lanestyle only tunes the look (`_ROADSTYLE`) and
-  mirrors the band for its own layers (`lines._band`: low / ground / high / bridge). Needs the roadstyle with that
-  change (the `levels-and-looks` branch, not yet released).
+- Tunnels and bridges are drawn by roadstyle's **casing and fill numbers** (`docs/design/lanestyle_on_roadstyle_levels.md`): a tunnel lane has the tunnel look (two-tone casing, faded fill) at its own position, below the ground lanes it
+  passes under; a bridge is a road like any other (roadstyle is given an empty bridge column), at a higher position. lanestyle only tunes the look (`_ROADSTYLE`); its own layers go by position (`lsAnchor`: `roads-fill-lv<p>`).
 - A GMNS file needs duckOSM 0.1.0 or later (`pip install duckosm`; on `main` since commit ae813ac) for the footway joins (`gmns_walking.lane_connector`; lanestyle adds no connector itself), the half-circle U-turns, `link_along`, the continuation movements and the crossing tables; older files still draw, without joins, frames and zebras.
 - Without `select_color`, roadstyle's violet selection glow hides the red clicked lane. That's why
   `render_lanes` passes the `clicked` colour.

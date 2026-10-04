@@ -1,5 +1,7 @@
 # The drawing order from per-edge intervals
 
+**Superseded** (also by [roads for the casing, items for the fill](lanestyle_on_roadstyle_items.md)) by [The casing and fill numbers](lanestyle_on_roadstyle_levels.md): roadstyle computes the numbers (mapstyle's `node_levels` is gone). Kept as the record of the intervals step.
+
 **Status:** proposal, waiting for Kaveh's OK ("go for interval plan", 2026-10-03: "it is a big step"). No code yet.
 
 ## Problem
@@ -66,7 +68,7 @@ Before / after pictures, with the interactive map at each spot: the Sporting rou
 ## As built (2026-10-03, steps 1 to 3 and the outlines; not pushed)
 
 - `levels.py` `link_intervals(source_db)`: mapstyle's `node_levels.compute`, positions doubled; `from_gmns(..., source_db)` adds `pos_casing` / `pos_fill` to every lane
-  (the names have no leading underscore: `itertuples` renames those). Needs the database of **every mode** (`data/monaco_all.duckdb`: 1,278 of 14,529 lanes are off
+  (the names have no leading underscore: `itertuples` renames those). Needs the database of **every mode** (duckOSM's `monaco.duckdb`: 1,278 of 14,529 lanes are off
   position 0, 7 levels, 6 of 594 overpass pairs given up by the heuristic; OR-Tools is not installed, `pip install ortools` for the optimal solution).
 - `render_lanes` passes `casing_level_col="pos_casing"`, `fill_level_col="pos_fill"`. `lines._band(r)` is `bridge` or the fill position (`"-2"`, `"0"`, `"2"`),
   `_group(r)` the same (one position is one surface); `lines._level(r)` keeps the old three bands for the popup and the tunnel flag. A table without `pos_fill` is drawn as before.
@@ -103,3 +105,14 @@ position**, so roads that share a node merge and a road over another covers its 
   break that input. It goes when the intervals can be computed from a GMNS link table alone (from / to nodes, `bridge` / `tunnel` / `layer`), which is a separate step, not started.
 - **Kept on purpose in the interval path:** the ring rank (roads of one position and one class tie in roadstyle's order: a ring and an arm of the same class), the footpath-on-road order, connectors under lanes
   (all orders *inside* a position), and the per-level frames (what a sidewalk is matched with is a level, not a position).
+
+### Correction 2 (2026-10-03, Kaveh: "we have casing_level_col, fill_level_col for each road ... at the casing level we draw their casing, at the fill level its lanes, the lane separators and the rest")
+
+That is the model, and the build matched it except for bridges. A bridge lane was labelled with a band of its own (`bridge`, roadstyle's deck layers, above every position), so its outline
+(a casing line drawn by us) lay over the road it continues into and ended in a closed black capsule at each joint (Avenue de la Costa, lane `683666470146267312_1`). Now, with a drawing order:
+
+- a bridge is a road like any other: `lines._band` is the lane's fill position, and roadstyle is given an empty bridge column (`bridge_col="rs_bridge"`), so it draws the bridge in its position layers, not
+  in the deck band; the bridge's outline is the heavier `bridge_edge` style, at the road's casing position, under the fills of that position: the road it joins covers its end caps;
+- the page makes only the line layers that have lines (`present` in `_LINES_JS`), so no layer per band and type that stays empty;
+- an option, `lanes.roadstyle_casing` (off), lets roadstyle draw every edge's casing itself (`casing_m` = the outline width) instead of our own outline lines: clean joints too, but a thin dark line
+  also shows between neighbouring lanes (roadstyle's casing is the whole width of each lane) and tunnel lane ends show round blobs. Pictures in `renders/intervals/`.

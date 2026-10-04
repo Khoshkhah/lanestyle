@@ -61,7 +61,7 @@ ls.render_lanes(lanes, turns=turns).save("monaco.html")
 ## What you get
 
 - **Lanes, not roads.** Each lane is its own line, exactly its width in metres from zoom 16 on, so neighbours sit side by side with no gap and no overlap.
-- **Painted lane lines.** Dashed dividers, a solid centre line, grey edges: drawn to scale and cut at junctions.
+- **Painted lane lines.** Dashed dividers, a solid centre line, drawn to scale and cut at junctions.
 - **Turns you can see.** Click a lane: it turns red, the lanes it leads into green, U-turns purple. Every lane carries its turn label.
 - **Everything roadstyle has.** Bridges over, tunnels under, base maps, the filter box, popups, arrows and the `rs*` JavaScript API, from [roadstyle](https://github.com/Khoshkhah/roadstyle). lanestyle is to lanes what [mapstyle](https://github.com/Khoshkhah/mapstyle) is to the full base map.
 

@@ -69,7 +69,7 @@ Open a page at a spot with `page.html#zoom/lat/lon`. The Roads box lists the lan
 lanestyle adds no connector itself: footway joins and U-turn arcs come from duckOSM (`gmns_walking.lane_connector`).
 
 What the page shows: lanes at true width from zoom 16 (class widths below); dashed dividers
-between lanes of one direction, a solid centre line between directions, grey edges, cut at
+between lanes of one direction, a solid centre line between directions, cut at
 junctions; bus and bike lanes painted over the palette with rows in the Roads box; the street name
 once per road; a turn label per lane from zoom 18 (`left + thru`, `right`, `U-turn`, `fork`,
 `merge`, `end`); click a lane: red, the lanes it leads into green, U-turns purple, popup with
@@ -83,10 +83,10 @@ Defaults in `src/lanestyle/data/lanestyle.json`:
 | key | default | meaning |
 |---|---|---|
 | `colors.bus`, `colors.bike`, `colors.clicked`, `colors.turns_into`, `colors.uturn` | blue, blue, red, green, purple | lane and click colours |
-| `lines.divider` / `lines.centre` / `lines.edge` | `{color, width_m, dash_m}` | `dash_m: null` = solid; `"lines": false` = none |
+| `lines.divider` / `lines.centre` | `true` | `false` = left out; `"lines": false` = none. Looks are the theme's `divider` / `centre` styles (`src/lanestyle/styles/themes/lanestyle.yaml`) |
 | `junction_trim_m` | 1 | lines stop this far short of the other roads' surface |
 | `type_label_zoom` | `null` | a zoom number draws each lane's turns (`left + thru`) along it from that zoom; off by default: the turns are in the popup (`lane_type`) |
-| `default_width_m`, `width_m_by_use`, `width_m_zoom`, `casing_m` | 3.25, `{walk: 2.0, bike: 1.5}`, 16, 0 | lane width where null (`width_m_by_use`: footpath, on-road bike lane); true widths from this zoom; casing inside each lane |
+| `default_width_m`, `width_m_by_use`, `width_m_zoom`, `casing_m` | 3.25, `{walk: 2.0, bike: 1.5}`, 16, 0.14 | lane width where null (`width_m_by_use`: footpath, on-road bike lane); true widths from this zoom; casing inside each lane |
 | `fillet_m` | 0 (off) | pave gaps narrower than 2× this between lane surfaces |
 | `frame_gap_m`, `frame_reach_m`, `frame_casing` | 2, 8, false | a footpath matched to a road is one frame with it: the gap (up to `frame_reach_m`) is filled in a tint of its colour and no outline is drawn between them; `frame_gap_m` 0 turns frames off |
 | `connectors_clickable` | false | connectors can be clicked / hovered like lanes (off: the click goes to the lane under one) |
@@ -136,5 +136,6 @@ on. List them with `map.getStyle().layers.map(l => l.id)`.
 - **A tunnel is a look, not a different rule**: levels (`layer`) separate lanes (layer -1 over -2, never connected to each other); do not add tunnel-only geometry rules.
 - **Fix data in duckOSM, not in the table**: a lane with no way out, a wrong lane count or a missing footpath match is a duckOSM problem; lanestyle only draws.
 - **Street View**: `render_lanes(lanes, turns, street_view=True)` (roadstyle's page) or `street_view_key=KEY` (the map's toggle). A key is written into the page: never commit it.
-- **Lanes have no casing** on purpose; neighbours merge into one surface and the lane lines
-  separate them. Don't add `casing_m` to get dividers; style `lines` instead.
+- **Roads have the casing, lanes none.** roadstyle draws one road per link (casing only, `road_fill=False`); lanes, connectors, lines, zebra, arrows and names are items attached to it
+  (`rs.Overlay(edge_col, order_col, color_col, style)`; order: connector -1, lane 0, lines 1, zebra 2, arrows 3, names 4). Looks are the theme `src/lanestyle/styles/themes/lanestyle.yaml`; see `docs/design/lanestyle_on_roadstyle_items.md`.
+- **Numbers**: read from duckOSM's `visualization.edge_levels` when the file has them (`render_lanes(..., source_db=...)`); a stale table is an error: run `duckosm levels <db>`. Without it roadstyle computes them.

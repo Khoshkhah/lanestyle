@@ -1,16 +1,15 @@
 # Lane lines
 
-<p class="lead">Lanes have no casing. The lines between them are lanestyle's own layer, drawn to scale on top of the lanes, each type styled on its own.</p>
+<p class="lead">Lanes have no casing; the road has. The lines between lanes are items attached to the road, drawn to scale on top of the lanes, each type styled in the theme.</p>
 
 <div class="ls-shot" markdown>
-![Boulevard Princesse Charlotte at zoom 20: a bus lane and two lanes, dashed dividers, grey edges, stopping at the mini-roundabout](../img/gallery/lane_lines.jpg)
+![Boulevard Princesse Charlotte at zoom 20: a bus lane and two lanes, dashed dividers, stopping at the mini-roundabout](../img/gallery/lane_lines.jpg)
 </div>
 
 | Type | Where | Default |
 |---|---|---|
-| `divider` | between lane k and k+1 of one road (same direction) | off-white `#e8e8e8`, 0.15 m, dashed 3 m / 9 m |
-| `centre` | between the two directions of a two-way road, also one mapped as two one-way ways side by side | off-white `#e8e8e8`, 0.15 m, solid |
-| `edge` | the road's outer edges | grey `#6b6b6b`, 0.10 m, solid |
+| `divider` | between lane k and k+1 of one road (same direction) | off-white `#f4f4f4`, 0.2 m, dashed 3 m / 9 m |
+| `centre` | between the two directions of a two-way road, also one mapped as two one-way ways side by side | off-white `#f4f4f4`, 0.2 m, solid |
 
 ## How they are placed
 
@@ -23,28 +22,27 @@ one-way links whose lane 1 left edges lie on each other (a dual carriageway mapp
 
 **Lines stop at junctions**, as painted lines do. A line whose road meets a junction is cut by the
 lane surfaces of every other road there, grown by `junction_trim_m` (1 m). So a main road's
-dividers run on past a side street's mouth, and its edge line breaks there. Where a road goes on
+dividers run on past a side street's mouth. Where a road goes on
 into the next piece of the same road, nothing is cut.
 
 ## In the page
 
-The lines go in as compact columns and become one MapLibre line layer per level and type, inserted
-right after that level's lane fill: a bridge covers the lines of the street under it. They are drawn
-to scale but never thinner than `line_min_device_px` (1.5) physical pixels, and fade in over two
-zoom levels from `width_m_zoom`. `line-dasharray` counts in multiples of the line's width, so the
-dashes are exact at every zoom.
+Each line is a feature with its road (`edge_id`) and `order` 1, drawn by roadstyle's overlay `dividers` /
+`centre` at the fill number of its road: a bridge covers the lines of the street under it. The look is the
+theme's style `divider` / `centre` ([the design](../design/lanestyle_on_roadstyle_items.md)): a width in
+metres, `dash` (in line widths, so exact at every zoom) and `min_zoom` 17. The road's casing is the outline;
+there are no edge lines.
 
 ## Style them
 
-The roadstyle way: a `lanestyle.json` in the current folder, or a `"lanes"` key in `settings=`,
-stating only what changes. `dash_m: null` means solid; `"lines": false` turns them all off.
+The look is a **theme**: `src/lanestyle/styles/themes/lanestyle.yaml`, block `config.overlays.styles`. Pass your
+own file or dict as `settings=` to change it; `"lines": false` in `settings={"lanes": ...}` leaves the lines out.
 
 ```python
-ls.render_lanes(lanes, turns=turns, settings={"lanes": {
-    "lines": {"divider": {"color": "#ffffff", "width_m": 0.12, "dash_m": [3, 6]},
-              "edge": {"color": "#444444"}},
-    "junction_trim_m": 2,
-}})
+ls.render_lanes(lanes, turns=turns, settings={
+    "config": {"overlays": {"styles": {"divider": {"kind": "line", "color": "#ffffff", "width_m": 0.12, "dash": [3, 6], "min_zoom": 17}}}},
+    "lanes": {"junction_trim_m": 2},
+})
 ```
 
 ## Corners at junctions
