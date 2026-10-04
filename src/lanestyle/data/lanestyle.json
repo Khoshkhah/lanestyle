@@ -5,7 +5,7 @@
       "bus": "#d6336c",
       "bike": "#1c7ed6",
       "walk": "#f0cb8c",
-    "crossing": "#f8e7bf",
+      "crossing": "#f8e7bf",
       "sidewalk": "#e6b9a6",
       "groups": {
         "driving": "#a3a3a3",
@@ -21,15 +21,24 @@
       "uturn": "#8e44ad"
     },
     "lines": {
-      "divider": {"color": "#f4f4f4", "width_m": 0.2, "dash_m": [3, 9]},
-      "centre": {"color": "#f4f4f4", "width_m": 0.2, "dash_m": null},
-      "bridge_edge": {"color": "#1a1a1a", "width_m": 0.3, "dash_m": null},
-      "edge": {"color": "#5a5a5a", "width_m": 0.14, "dash_m": null}
+      "divider": true,
+      "centre": true
     },
-    "zebra": {"color": "#f7f7f2", "width_m": 3.0, "stripe_m": 0.5, "gap_m": 0.5},
-    "arrows": {"color": "#f4f4f4", "length_m": 4, "end_m": 10, "repeat_m": 60, "from_zoom": 18},
-    "names": {"color": "#f4f4f4", "halo": "#3a3a3a", "size": 12, "from_zoom": 17, "clear_m": 3},
+    "zebra": {
+      "stripe_m": 0.5,
+      "gap_m": 0.5
+    },
+    "arrows": {
+      "length_m": 4,
+      "end_m": 10,
+      "repeat_m": 60
+    },
+    "names": {
+      "clear_m": 3
+    },
     "junction_trim_m": 1,
+    "line_min_m": 1.5,
+    "head_m": 25,
     "fillet_m": 0,
     "frame_gap_m": 2.0,
     "connectors_clickable": false,
@@ -38,11 +47,13 @@
     "crossing_min_on": 0.2,
     "frame_reach_m": 8.0,
     "frame_casing": false,
-    "line_min_device_px": 2,
     "type_label_zoom": null,
     "default_width_m": 3.25,
-    "width_m_by_use": {"walk": 2.0, "bike": 1.5},
-    "casing_m": 0,
+    "width_m_by_use": {
+      "walk": 2.0,
+      "bike": 1.5
+    },
+    "casing_m": 0.14,
     "width_m_zoom": 16
   }
 }

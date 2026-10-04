@@ -97,11 +97,11 @@ def lane_arrows(lanes, turns, s, avoid=None):
                 poly = translate(rotate(scale(arrow, f, f, origin=(0, 0)), ang, origin=(0, 0)), c.x, c.y)
                 if zebra is None or not poly.intersects(zebra):
                     polys.append(poly)
-                    bands.append(_band(r))
+                    bands.append((_band(r), int(r.link_id)))
                     break
     if not polys:
         return None
     ll = gpd.GeoSeries(polys, crs=u).to_crs(4326)
     return {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "properties": {"b": b}, "geometry": {"type": "Polygon", "coordinates": [[[round(x, 7), round(y, 7)] for x, y in p.exterior.coords]]}}
-        for p, b in zip(ll, bands) if p.geom_type == "Polygon"]}
+        {"type": "Feature", "properties": {"b": b, "edge_id": link}, "geometry": {"type": "Polygon", "coordinates": [[[round(x, 7), round(y, 7)] for x, y in p.exterior.coords]]}}
+        for p, (b, link) in zip(ll, bands) if p.geom_type == "Polygon"]}

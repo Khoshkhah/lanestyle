@@ -30,17 +30,16 @@ def _level(r):
 
 
 def _position(r):
-    """The lane's fill position in roadstyle's drawing order (``pos_fill``, docs/design/interval_draw_order.md) as text, or None without one."""
-    p = getattr(r, "pos_fill", None)
+    """The lane's fill position in roadstyle's drawing order (``fill_level``, docs/design/interval_draw_order.md) as text, or None without one."""
+    p = getattr(r, "fill_level", None)
     return None if p is None or p != p else str(int(p))
 
 
 def _band(r):
-    """What the page draws a lane's layers after: ``bridge`` for a bridge (roadstyle keeps its deck layers), else the lane's fill position (``"-2"``, ``"0"``, ``"2"``:
-    roadstyle's per-position layers) when the table has a drawing order, else :func:`_level`'s band."""
-    lv = _level(r)
+    """What the page draws a lane's layers after: the lane's fill position (``"-2"``, ``"0"``, ``"2"``: roadstyle's per-position layers) when the table has a drawing order
+    (a bridge is a road like any other: roadstyle is told it is none, so it has no deck band of its own), else :func:`_level`'s band."""
     pos = _position(r)
-    return lv if lv == "bridge" or pos is None else pos
+    return _level(r) if pos is None else pos
 
 
 def _group(r):
@@ -124,11 +123,11 @@ def _end_dir(line):
     return (x1 - x0) / n, (y1 - y0) / n
 
 
-def lane_lines(lanes, s, avoid=None, frame=None, frame_edges=None):  # frame: {level: lon/lat area} (frames.py)
-    """The lines between and beside lanes as a GeoJSON FeatureCollection; properties ``t`` (type:
-    ``divider`` / ``centre`` / ``edge``), ``b`` (roadstyle band) and ``k`` (the line's width in
-    metres over cos(latitude): × 512·2^z / C is its width in pixels). None when lines are off or
-    the table has no ``link_id`` / ``lane_num``.
+def lane_lines(lanes, s, avoid=None, frame=None):  # frame: {level: lon/lat area} (frames.py)
+    """The dividers and centre lines between lanes as a GeoJSON FeatureCollection; properties ``t`` (type:
+    ``divider`` / ``centre``), ``b`` (the fill position of the lane) and ``edge_id`` (the link the line belongs to: the lane's own, the smaller of a
+    two-way road's two links for a centre line). None when lines are off or the table has no ``link_id`` / ``lane_num``. The outline of a road is
+    not drawn here: it is roadstyle's casing of the road (docs/design/lanestyle_on_roadstyle_items.md).
 
     In a link, lane 1 is the leftmost lane in the direction of travel and the lane numbers grow to
     the right (duckOSM, right-hand traffic): lane k's right edge is the divider to lane k+1, the
@@ -147,17 +146,12 @@ def lane_lines(lanes, s, avoid=None, frame=None, frame_edges=None):  # frame: {l
     styles = s.get("lines") or {}
     if not any(styles.values()) or not {"link_id", "lane_num"} <= set(lanes.columns):
         return None
-    # With a drawing order (pos_casing / pos_fill, docs/design/interval_draw_order.md) the outline is a casing: drawn once per carriageway at its casing position,
-    # under every fill of that position, so the order alone merges what meets and covers what lies over. No hand cuts then: only the paint (dividers, centre lines) is cut.
-    ordered = {"pos_casing", "pos_fill"} <= set(lanes.columns)
-    conn = None
-    if "connector" in lanes:                     # connectors carry no lane lines: their outer sides get casing (below)
-        isc = lanes["connector"].fillna(False).astype(bool)
-        conn, lanes = lanes[isc], lanes[~isc]
+    if "connector" in lanes:                     # connectors carry no lane lines
+        lanes = lanes[~lanes["connector"].fillna(False).astype(bool)]
     g = lanes.to_crs(lanes.estimate_utm_crs())
-    lat = lanes.geometry.representative_point().y.to_numpy()
     last = g.groupby("link_id")["lane_num"].transform("max").to_numpy()
     trim = float(s.get("junction_trim_m") or 0)
+    line_min = float(s.get("line_min_m", 1.5))     # the shortest piece of a line that is kept
     partner = _paired(g)
     at, surface, cuts = defaultdict(set), {}, {}      # node -> its links; link -> its lanes' surface
     if {"from_node_id", "to_node_id"} <= set(g.columns):
@@ -339,7 +333,7 @@ def lane_lines(lanes, s, avoid=None, frame=None, frame_edges=None):  # frame: {l
             stops.append(ov)
         if above.get(_group(r)) is not None:
             stops.append(above[_group(r)])
-        band, sec = _band(r), 1 / math.cos(math.radians(lat[i]))
+        band = _band(r)
         for t0, off in todo:
             line = piece_line(i, off)
             if t0 == "pair":
@@ -353,10 +347,8 @@ def lane_lines(lanes, s, avoid=None, frame=None, frame_edges=None):  # frame: {l
             else:
                 pieces = [(t0, line)]
             for t, line in pieces:
-                if t == "edge" and band == "bridge" and styles.get("bridge_edge"):
-                    t = "bridge_edge"       # a bridge's outline: its own casing, cut where a road joins it, whole where one crosses
-                if ordered and t in ("edge", "bridge_edge"):
-                    continue                # drawn as a casing below
+                if t == "edge":
+                    continue                # the outline is the road's casing, drawn by roadstyle
                 st = styles.get(t)
                 if not st or line.is_empty:
                     continue
@@ -367,145 +359,16 @@ def lane_lines(lanes, s, avoid=None, frame=None, frame_edges=None):  # frame: {l
                 if (f := fr.get(_group(r))) is not None and f.intersects(line):
                     line = line.difference(f)
                 line = shapely.line_merge(line) if line.geom_type == "MultiLineString" else line
-                parts = [p for p in getattr(line, "geoms", [line]) if p.length >= 0.5]   # no crumbs
+                parts = [p for p in getattr(line, "geoms", [line]) if p.length >= line_min]   # no crumbs: a dashed line shows each piece as a tick or a dot
                 if not parts:
                     continue
                 line = parts[0] if len(parts) == 1 else shapely.MultiLineString(parts)
-                out.append((t, band, round(st["width_m"] * sec, 4), line))
-    if conn is not None and len(conn) and styles.get("edge") and not ordered:
-        # Casing at a connector: the outline of the surface the map draws there. A connector joins lanes the page draws with round ends, so its own edge
-        # is not the outline (a lane's cap sticks out past it, and a neighbour's cap covers part of it). The outline is the boundary of the union of the
-        # level's lanes (round ends) and connectors, kept near a connector (its surface and the end caps of the lanes it joins), and open where a
-        # footway's surface meets it, as a road's edge line is (above).
-        gc = conn.to_crs(g.crs)
-        cap = lambda r: r.geometry.buffer(r.width_m / 2, cap_style="round")          # noqa: E731
-        by_level = defaultdict(lambda: ([], [], []))                                 # level -> road + connector surfaces, footway surfaces, near-connector zone
-        by_id = {r.lane_id: r for r in rows}
-        for i, r in enumerate(rows):
-            if not zebra[i] and r.geometry is not None:
-                by_level[_group(r), _band(r)][1 if walk[i] else 0].append(cap(r))
-        for r in gc.itertuples(index=False):
-            if r.geometry is None or r.geometry.geom_type != "LineString" or r.geometry.length < 0.5:
-                continue
-            lv = by_level[_group(r), _band(r)]
-            lv[0].append(cap(r))
-            zone = [cap(r)]
-            for ln, end in ((getattr(r, "from_lane", None), -1), (getattr(r, "to_lane", None), 0)):
-                if ln in by_id and by_id[ln].geometry is not None:
-                    zone.append(Point(by_id[ln].geometry.coords[end]).buffer(by_id[ln].width_m / 2))
-            lv[2].extend(zone)
-        for (gp, bd), (surfaces, foot, zone) in by_level.items():
-            if not zone:
-                continue
-            u = shapely.union_all(surfaces)
-            u = shapely.MultiPolygon([Polygon(q.exterior, [h for h in q.interiors if Polygon(h).area >= 1.0]) for q in getattr(u, "geoms", [u])])   # a sliver between two lanes is no outline
-            edge = u.boundary.intersection(shapely.union_all(zone).buffer(trim + 0.1))      # the lane lines stop trim short of a junction: the outline covers that stretch
-            if foot:
-                edge = edge.difference(shapely.union_all(foot))
-            if above.get(gp) is not None:
-                edge = edge.difference(above[gp])
-            beside = [q for (g2, b2), (s2, f2, _z) in by_level.items() if g2 == gp and b2 != bd for q in (*s2, *f2)]
-            if beside:                                                                   # the same level at another position is one surface with this: no outline across the joint
-                edge = edge.difference(shapely.union_all(beside))
-            parts = [q for q in getattr(shapely.line_merge(edge) if edge.geom_type == "MultiLineString" else edge, "geoms", [edge])
-                     if q.geom_type == "LineString" and q.length >= 0.2]                # a boundary piece is never a crumb: a short one closes a corner
-            if parts:
-                t = "bridge_edge" if bd == "bridge" and styles.get("bridge_edge") else "edge"
-                out.append((t, bd, round(styles[t]["width_m"] / math.cos(math.radians(float(lat.mean()))), 4),
-                            parts[0] if len(parts) == 1 else shapely.MultiLineString(parts)))
-    if any(walk) and styles.get("edge") and not ordered:
-        # Walkers have no lanes: the footpaths of a level are one surface, its outline one line (not a pair of edges per
-        # strip that cross each other at every junction), stopping where a road's surface begins
-        sec = 1 / math.cos(math.radians(float(lat.mean())))
-        by = defaultdict(list)                          # (level, position) -> its footway surfaces
-        road_of = defaultdict(list)                     # level -> the road and connector surfaces that stop its footways' outline
-        joint = defaultdict(list)                       # (level, position) -> the end of a footway that goes on in another one
-        level = {"low": 0, "ground": 1, "high": 2, "bridge": 3}
-        at_node = defaultdict(set)                      # footway node -> the bands of the footways that meet there
-        lanes_at = defaultdict(list)                    # footway node -> the footways that meet there
-        eff = {}                                        # footway -> the band it is outlined in
-        for i, r in enumerate(rows):
-            if walk[i]:
-                for nd in (getattr(r, "from_node_id", None), getattr(r, "to_node_id", None)):
-                    if nd is not None and not pd.isna(nd):
-                        at_node[nd].add((_group(r), _band(r)))
-                        lanes_at[nd].append(i)
-        if conn is not None and len(conn):             # junction surface: the lane connectors hide the footpath outline too
-            for rc in conn.to_crs(g.crs).itertuples(index=False):
-                if rc.geometry is not None and rc.geometry.geom_type == "LineString":
-                    road_of[_group(rc)].append(rc.geometry.buffer(rc.width_m / 2, cap_style="round"))
-        for i, r in enumerate(rows):
-            band = (_group(r), _band(r))
-            surf = r.geometry.buffer(r.width_m / 2, cap_style="round")                  # the map draws every lane with round ends
-            if walk[i]:
-                by[band].append(surf)
-                eff[i] = band
-            else:
-                road_of[band[0]].append(surf)
-        # a footway that goes on as a footway of another band (a bridge's end, a ramp: layer 1 with and without bridge=yes) has no outline
-        # across the joint: each band's outline stops where the other footway's surface is (not where one merely passes over or under)
-        for nd, ix in lanes_at.items():
-            for i in ix:
-                for j in ix:
-                    if i != j and eff[i] != eff[j]:
-                        # only by the node: the other footway's whole surface would cut this outline wherever the two overlap (a ground footway over a tunnel)
-                        end = rows[j].geometry.coords[0] if rows[j].from_node_id == nd else rows[j].geometry.coords[-1]
-                        joint[eff[i]].append(rows[j].geometry.buffer(rows[j].width_m / 2, cap_style="round").intersection(shapely.Point(end).buffer(_JOIN_M + 1.0)))
-        for (gp, bd), foot in by.items():
-            if not foot:
-                continue
-            edge = shapely.union_all(foot).boundary
-            road = road_of[gp] + joint[gp, bd]
-            if road:
-                edge = edge.difference(shapely.union_all(road))
-            if above.get(gp) is not None:                     # a lower layer's outline lies under the higher layers
-                edge = edge.difference(above[gp])
-            if fr.get(gp) is not None:
-                edge = edge.difference(fr[gp])
-            beside = [q for (g2, b2), f2 in by.items() if g2 == gp and b2 != bd for q in f2]
-            if beside:                                        # the same level at another position: one surface, no outline across the joint
-                edge = edge.difference(shapely.union_all(beside))
-            t = "bridge_edge" if bd == "bridge" and styles.get("bridge_edge") else "edge"
-            parts = [q for q in getattr(shapely.line_merge(edge) if edge.geom_type == "MultiLineString" else edge, "geoms", [edge])
-                     if q.length >= 0.5]
-            if parts:
-                out.append((t, bd, round(styles[t]["width_m"] * sec, 4),
-                            parts[0] if len(parts) == 1 else shapely.MultiLineString(parts)))
-    if ordered and (styles.get("edge") or styles.get("bridge_edge")):
-        # The outline as a casing: each link's carriageway (a connector, a footway: its own surface) as one boundary line, at its casing position. roadstyle draws every casing of
-        # a position under every fill of it, so two roads that share a node merge, a road over another covers its outline, and nothing is cut here.
-        sec = 1 / math.cos(math.radians(float(lat.mean())))
-
-        def where(r):
-            cp = getattr(r, "pos_casing", None)
-            return "bridge" if _level(r) == "bridge" else str(int(cp)) if cp is not None and cp == cp else "0"
-        each = defaultdict(list)
-        for i, r in enumerate(rows):
-            if not zebra[i] and r.geometry is not None:
-                each[r.link_id, where(r)].append(r.geometry.buffer(r.width_m / 2, cap_style="round"))
-        if conn is not None and len(conn):
-            for rc in conn.to_crs(g.crs).itertuples(index=False):
-                if rc.geometry is not None and rc.geometry.geom_type == "LineString" and rc.geometry.length >= 0.5:
-                    each[rc.lane_id, where(rc)].append(rc.geometry.buffer(rc.width_m / 2, cap_style="round"))
-        for (_, lab), polys in each.items():
-            t = "bridge_edge" if lab == "bridge" and styles.get("bridge_edge") else "edge"
-            if styles.get(t):
-                # the line is centred on the boundary and the lane's own fill covers its inner half: twice the width shows the full width outside
-                out.append((t, lab, round(2 * styles[t]["width_m"] * sec, 4), shapely.union_all(polys).simplify(0.03).boundary))
-    if frame_edges and styles.get("edge") and not ordered:               # the casing of a frame's gap (frames.py): where the verge itself meets the open
-        import geopandas as gpd
-
-        sec = 1 / math.cos(math.radians(float(lat.mean())))
-        for (band, _), e in zip(frame_edges, gpd.GeoSeries([e for _, e in frame_edges], crs=4326).to_crs(g.crs), strict=True):
-            parts = [q for q in getattr(shapely.line_merge(e) if e.geom_type == "MultiLineString" else e, "geoms", [e]) if q.length >= 0.3]
-            if parts:
-                out.append(("bridge_edge" if band == "bridge" and styles.get("bridge_edge") else "edge", band,
-                            round(styles["edge"]["width_m"] * sec, 4), parts[0] if len(parts) == 1 else shapely.MultiLineString(parts)))
+                out.append((t, band, int(r.link_id), line))
     if not out:
         return None
     import geopandas as gpd
 
     geo = gpd.GeoSeries([o[3] for o in out], crs=g.crs).to_crs(4326)
     return {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "properties": {"t": t, "b": b, "k": k}, "geometry": _coords(gm)}
-        for (t, b, k, _), gm in zip(out, geo)]}
+        {"type": "Feature", "properties": {"t": t, "b": b, "edge_id": link}, "geometry": _coords(gm)}
+        for (t, b, link, _), gm in zip(out, geo)]}

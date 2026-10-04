@@ -1,0 +1,176 @@
+"""The current design (docs/design/lanestyle_on_roadstyle_items.md): one road per carriageway, items attached to it by ``road_id``, the ends of roads that meet share one point."""
+import json
+
+import lanestyle as ls
+from lanestyle import items
+from test_lanestyle import _dbs
+
+
+def _style(html):
+    return json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])
+
+
+def _lanes(tmp_path):
+    gmns, src = _dbs(tmp_path)
+    lanes, turns = ls.from_gmns(gmns, source_db=src)
+    g = lanes[~lanes["connector"].fillna(False).astype(bool)] if "connector" in lanes else lanes
+    g = g[g.geometry.notna()].reset_index(drop=True)
+    g["width_m"] = g["width_m"].fillna(3.0)
+    return lanes, turns, g
+
+
+def test_a_road_is_a_carriageway_and_its_width_is_its_lanes_and_the_casing(tmp_path):
+    _, _, g = _lanes(tmp_path)
+    roads = items.link_roads(g, 0.14)
+    road_of = roads.attrs["road_of"]
+    assert set(road_of) == {int(k) for k in g["link_id"]} and set(road_of.values()) == {int(e) for e in roads["edge_id"]}
+    for road, w in zip(roads["edge_id"], roads["width_m"], strict=True):
+        links = [k for k, r in road_of.items() if r == road]
+        assert abs(w - (float(g[g["link_id"].isin(links)]["width_m"].sum()) + 0.28)) < 1e-9       # the lanes of its links together + the casing on each side
+
+
+def test_roads_that_meet_end_at_exactly_the_same_point(tmp_path):
+    from shapely.geometry import LineString
+
+    ends = items._snap_ends([LineString([(0, 0), (5, 0), (10, 0.0001)]), LineString([(10.0003, 0), (20, 5)])], [(1, 2), (2, 3)])
+    assert ends[0].coords[-1] == ends[1].coords[0]                          # node 2: one point, the mean
+    assert ends[0].coords[0] == (0.0, 0.0) and ends[0].coords[1] == (5.0, 0.0)  # nothing else moves
+    assert abs(ends[0].coords[-1][0] - 10.00015) < 1e-9
+
+
+def test_items_are_attached_to_their_road_and_keep_their_link(tmp_path):
+    _, _, g = _lanes(tmp_path)
+    roads = items.link_roads(g, 0.14)
+    road_of = roads.attrs["road_of"]
+    colours = g["highway"].map(lambda h: "#a3a3a3")
+    fc = items.on_roads(items.lane_items(g, colours, "#e6e6e6", ["lane_id"], on_road=()), road_of)
+    assert len(fc["features"]) == len(g)
+    for f in fc["features"]:
+        p = f["properties"]
+        assert p["road_id"] == road_of[p["edge_id"]] and p["order"] == items.LANE and p["color"] == "#a3a3a3"
+    assert items.on_roads(None, road_of) is None
+
+
+def test_a_road_end_is_a_disc_under_everything_in_the_colour_of_its_lanes(tmp_path):
+    _, _, g = _lanes(tmp_path)
+    roads = items.link_roads(g, 0.14)
+    colours = g["highway"].map(lambda h: "#a3a3a3")
+    fc = items.end_caps(roads, g, colours, "#e6e6e6", 0.14)
+    assert len(fc["features"]) == 2 * len(roads)                            # one disc at each end of every road
+    assert {f["properties"]["order"] for f in fc["features"]} == {items.ROAD_END} and items.ROAD_END < items.CONNECTOR < items.LANE
+    assert {f["properties"]["color"] for f in fc["features"]} == {"#a3a3a3"}
+
+
+def test_the_page_draws_roads_without_fill_and_the_items_by_road_id(tmp_path):
+    lanes, turns, g = _lanes(tmp_path)
+    html = ls.render_lanes(lanes, turns).html
+    style = _style(html)
+    assert any(lyr["id"].startswith("roads-casing") for lyr in style["layers"])
+    fills = [lyr for lyr in style["layers"] if lyr["id"].startswith("roads-fill") and not lyr["id"].endswith("-pat")]
+    assert fills and all(lyr["paint"].get("line-opacity") == 0 for lyr in fills)         # the road's own fill is invisible: the lanes are the fill
+    roads = {str(f["properties"]["edge_id"]) for f in style["sources"]["roads"]["data"]["features"]}
+    overlays = json.JSONDecoder().raw_decode(html.split("const OVERLAYS = ", 1)[1])[0]
+    lanes_ov = next(o for o in overlays if o["label"] == "lanes")
+    feats = style["sources"][lanes_ov["source"]]["data"]["features"]
+    assert feats and {str(f["properties"]["road_id"]) for f in feats} <= roads          # every lane is on a road of the page
+    assert all("edge_id" in f["properties"] and "lane_id" in f["properties"] for f in feats)
+
+
+def test_the_casing_numbers_of_the_roads_are_passed_with_their_heads(tmp_path):
+    lanes, turns, _ = _lanes(tmp_path)
+    style = _style(ls.render_lanes(lanes, turns).html)
+    props = style["sources"]["roads"]["data"]["features"][0]["properties"]
+    assert all(k in props for k in ("__rs_cs", "__rs_cl", "__rs_ce", "__rs_fl"))      # start head, main part, end head, fill
+
+
+def test_the_lanes_of_a_road_fill_its_band_side_by_side():
+    """docs: the lanes are laid across the road's band, leftmost first, each as wide as its width: the casing around them is the same width all along."""
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+
+    road = LineString([(0, 0), (50, 0), (100, 20)])
+    widths = [3.5, 3.0, 2.5]
+    top, shapes = sum(widths) / 2, []
+    for w in widths:
+        shapes.append(items._band(road, top - w, top))
+        top -= w
+    union = unary_union(shapes)
+    band = road.buffer(sum(widths) / 2, cap_style="flat")
+    assert union.symmetric_difference(band).area / band.area < 0.02          # no gap, no overlap beyond the joins
+    assert all(abs(s.area - w * road.length) / (w * road.length) < 0.02 for s, w in zip(shapes, widths, strict=True))
+
+
+def test_a_roundabout_and_a_tunnel_are_over_the_roads_they_meet():
+    """docs: the order of a road is the class order, plus 100 for a roundabout and for a tunnel, whatever the class; a road with no class has none."""
+    import numpy as np
+    import pandas as pd
+
+    from lanestyle.levels import RING_TUNNEL_BOOST, road_order
+
+    roads = pd.DataFrame({"highway": ["primary", "residential", "residential", "residential", None],
+                          "roundabout": [False, True, False, False, True], "tunnel": [None, None, "yes", "no", "yes"]})
+    o = road_order(roads)
+    assert o[1] == o[3] + RING_TUNNEL_BOOST and o[2] == o[3] + RING_TUNNEL_BOOST          # the ring and the tunnel are over the same class
+    assert o[1] > o[0] and o[2] > o[0]                                                      # and over a primary road they meet
+    assert np.isnan(o[4])
+
+
+def test_a_roads_numbers_are_the_rows_of_duckosms_table_as_they_are(tmp_path):
+    import duckdb
+    import pandas as pd
+
+    from lanestyle.levels import link_levels, stored_levels
+
+    db = tmp_path / "src.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE SCHEMA driving; CREATE SCHEMA visualization")
+    con.execute("CREATE TABLE driving.edges AS SELECT * FROM (VALUES (1, false), (2, true), (3, false)) t(edge_id, is_reverse)")
+    con.execute("CREATE TABLE visualization.edge_levels AS SELECT * FROM (VALUES (1, -2, -1, -1, -1), (2, -2, -1, -1, -1), (3, 0, 0, 0, 0)) t(edge_id, casing_start, casing_level, casing_end, fill_level)")
+    con.close()
+    roads = pd.DataFrame({"edge_id": [2, 1]})
+    assert stored_levels(roads, db).to_numpy().tolist() == [[-2, -1, -1, -1], [-2, -1, -1, -1]]       # each edge's row as stored (a reverse row too: mapstyle reads the same)
+    assert link_levels(roads, db).to_numpy().tolist() == stored_levels(roads, db).to_numpy().tolist()
+    try:
+        stored_levels(pd.DataFrame({"edge_id": [9]}), db)
+    except ValueError as e:
+        assert "duckosm levels" in str(e)
+    else:
+        raise AssertionError("an edge the table lacks must be an error")
+
+
+def test_the_popup_numbers_of_a_lane_are_its_own_links_not_its_roads(tmp_path):
+    import duckdb
+
+    from lanestyle.levels import own_levels
+
+    db = tmp_path / "src.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE SCHEMA visualization")
+    con.execute("CREATE TABLE visualization.edge_levels AS SELECT * FROM (VALUES (1, -2, -1, -1, -1), (2, -1, -1, -2, -1)) t(edge_id, casing_start, casing_level, casing_end, fill_level)")
+    con.close()
+    con = duckdb.connect(str(db)); con.execute("CREATE TABLE visualization.edge_levels_meta AS SELECT 25.0 AS head_m"); con.close()
+    from lanestyle.levels import stored_head_m
+    assert stored_head_m(db) == 25.0 and stored_head_m(None) is None            # the page cuts the heads at the length the numbers were computed with
+    got = own_levels([1, 2, 9], db)
+    assert got[0].tolist() == [-2, -1, -1, -1] and got[1].tolist() == [-1, -1, -2, -1]      # the two directions of a street keep their own heads
+    assert all(x != x for x in got[2])                                                       # a link the table lacks: NaN
+    assert all(x != x for x in own_levels([1], None)[0])
+
+
+def test_the_widest_road_decides_where_roads_meet_and_a_narrower_one_gets_a_hook(tmp_path):
+    from shapely.geometry import LineString
+
+    ring_a = LineString([(0, 0), (10, 0)])
+    ring_b = LineString([(10.2, 0.1), (20, 0)])                    # the ring goes on: its two ends are 0.22 m apart
+    arm = LineString([(10, 5), (10, 1.6)])                         # an arm of a narrow road ends 1.6 m off the ring's line
+    far = LineString([(10, 30), (10, 8)])                          # and one that ends 8 m off: no node of one road
+    out = items._snap_ends([ring_a, ring_b, arm], [(1, 2), (2, 3), (4, 2)], [6.78, 6.78, 3.53])
+    mid = (10.1, 0.05)
+    assert out[0].coords[-1] == mid and out[1].coords[0] == mid                      # the wide roads meet at the mean of their own ends
+    assert out[2].coords[-1] == mid and out[2].coords[-2] == (10.0, 1.6) and len(out[2].coords) == 3     # the arm keeps its line and gets the point as a hook
+    assert out[0].coords[0] == (0.0, 0.0)                                              # nothing else moves
+    arm_start = LineString([(10, 1.6), (10, 5)])                    # the same arm, drawn from the ring outwards: the hook is at its start
+    start_out = items._snap_ends([ring_a, ring_b, arm_start], [(1, 2), (2, 3), (2, 4)], [6.78, 6.78, 3.53])
+    assert start_out[2].coords[0] == mid and start_out[2].coords[1] == (10.0, 1.6) and start_out[2].coords[-1] == (10.0, 5.0)     # the point, then the old start: no fold
+    far_out = items._snap_ends([ring_a, ring_b, far], [(1, 2), (2, 3), (4, 2)], [6.78, 6.78, 3.53])
+    assert far_out[2].coords[-1] == far_out[0].coords[-1] and len(far_out[2].coords) == 2     # too far from the wide road: the old mean of all the ends

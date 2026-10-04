@@ -43,19 +43,11 @@ def read_crossings(gmns_db):
 
 
 def from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
-    """:func:`_from_gmns` plus the crossings in ``lanes.attrs["crossings"]`` (see :func:`read_crossings`), and with a ``source_db`` the drawing order
-    ``pos_casing`` / ``pos_fill`` of each lane (:func:`lanestyle.levels.link_intervals`: its link's interval, both ends in roadstyle's positions)."""
+    """:func:`_from_gmns` plus the crossings in ``lanes.attrs["crossings"]`` (see :func:`read_crossings`). The drawing order (roadstyle's casing and fill numbers) is computed
+    by ``render_lanes`` from the lane table: ``visualization.edge_levels`` of the database is not used (docs/design/lanestyle_on_roadstyle_levels.md)."""
     lanes, turns = _from_gmns(gmns_db, mode, source_db, modes)
-    if source_db:                                        # every lane (a connector: its link is its lane's) in its link's interval: roadstyle's drawing order
-        from lanestyle.levels import cut_lanes, link_intervals
-
-        iv, cuts = link_intervals(source_db)
-        if iv or cuts:
-            lanes["pos_casing"] = [iv.get(int(lk), (0, 0))[0] if lk == lk else 0 for lk in lanes["link_id"]]
-            lanes["pos_fill"] = [iv.get(int(lk), (0, 0))[1] if lk == lk else 0 for lk in lanes["link_id"]]
-            if cuts:                                     # a road that changes level along itself: drawn in pieces, each in its own interval
-                lanes = cut_lanes(lanes, cuts)
     lanes.attrs["crossings"] = read_crossings(gmns_db) if "driving" in (modes or [mode]) else None
+    lanes.attrs["source_db"] = str(source_db) if source_db else None            # where roadstyle's numbers of the roads are read from (visualization.edge_levels), if the file has them
     return lanes, turns
 
 
@@ -77,8 +69,10 @@ def _from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
     earlier = set()                                      # the lanes of the modes read before
     for i, m in enumerate(modes):
         lanes, turns = _from_gmns_mode(gmns_db, m, source_db)
-        if i:                                            # a later mode's movement that starts on an earlier mode's lane is that mode's walkers stepping off the road onto a footpath:
-            turns = turns[~turns["from_lane"].astype(str).isin(earlier)]     # not a turn of the car lane (it would give the lane a left / right arrow towards a footway)
+        # a later mode's movement that starts on an earlier mode's lane is that mode's walkers stepping off the road onto a footpath: it stays in the table (the footway join
+        # between the two is a connector, labelled and ordered by it) but is flagged ``walkers``, and is no turn of the car lane (it would give the lane a left / right arrow
+        # towards a footway): lane types, arrows, counts and click highlights leave the flagged rows out
+        turns = turns.assign(walkers=turns["from_lane"].astype(str).isin(earlier)) if i else turns.assign(walkers=False)
         for link in set(lanes["link_id"].dropna()):      # every mode whose network has the link, kept or not
             modes_of.setdefault(link, []).append(m)
         if "osm_id" in lanes:

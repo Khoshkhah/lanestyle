@@ -1,0 +1,13 @@
+# The lanestyle theme: the looks of the items attached to the roads (docs/design/lanestyle_on_roadstyle_items.md).
+# roadstyle ships no overlay style: this block is passed to it as settings= (config.overlays.styles). An item's own colour
+# (lanes, connectors) is its `color` property; the widths are in metres, exact from min_zoom; dash is in line widths (3 m dash, 9 m gap on a 0.2 m line).
+config:
+  overlays:
+    styles:
+      lane:         {kind: fill, opacity: 1, width: 0}
+      connector:    {kind: fill, opacity: 1, width: 0}
+      divider:      {kind: line, color: "#f4f4f4", width_m: 0.2, dash: [15, 45], min_zoom: 17}
+      centre:       {kind: line, color: "#f4f4f4", width_m: 0.2, min_zoom: 17}
+      zebra:        {kind: fill, color: "#f7f7f2", opacity: 1, width: 0, min_zoom: 16}
+      lane_arrow:   {kind: fill, color: "#f4f4f4", opacity: 1, width: 0, min_zoom: 18}
+      street_name:  {kind: text, text_col: name, text_size: 12, text_color: "#f4f4f4", text_halo: "#3a3a3a", min_zoom: 17}

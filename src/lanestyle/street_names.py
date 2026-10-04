@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 def street_names(lanes, arrows, s, avoid=None):
-    """The names as a GeoJSON FeatureCollection of lon/lat lines (property ``name``), or None. ``arrows``: :func:`lanestyle.arrows.lane_arrows`' output
+    """The names as a GeoJSON FeatureCollection of lon/lat lines (properties ``name`` and ``edge_id``, the link it is drawn along), or None. ``arrows``: :func:`lanestyle.arrows.lane_arrows`' output
     (or None); ``s``: ``lanes.names``; ``avoid``: a lon/lat geometry to keep clear of too (the zebra crossings). A two-way road is labelled once, on lane 1's left edge (the centre line), by the smaller of its two links;
     a one-way link along the middle of its lanes. Each line loses the stretches within ``clear_m`` of an arrow or in ``avoid``."""
     import geopandas as gpd
@@ -47,10 +47,10 @@ def street_names(lanes, arrows, s, avoid=None):
         for p in getattr(line, "geoms", [line]):
             if p.geom_type == "LineString" and p.length > 3:
                 lines.append(p)
-                names.append(first["name"])
+                names.append((first["name"], int(lk)))
     if not lines:
         return None
     ll = gpd.GeoSeries(lines, crs=u).to_crs(4326)
     return {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "properties": {"name": n},
-         "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in p.coords]}} for p, n in zip(ll, names)]}
+        {"type": "Feature", "properties": {"name": n, "edge_id": lk},
+         "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in p.coords]}} for p, (n, lk) in zip(ll, names)]}
