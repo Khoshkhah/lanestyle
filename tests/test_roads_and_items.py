@@ -196,7 +196,7 @@ def test_a_two_way_road_with_unequal_lanes_is_drawn_where_its_lanes_are():
 
 
 def test_a_lane_click_reaches_the_street_view_panel(tmp_path):
-    """roadstyle's panel ignores overlay clicks, so with street_view=True lanestyle re-sends a lane click as a click on its road."""
+    """roadstyle's Street View panel and window ignore overlay clicks, so lanestyle re-sends a lane click as a click on its road."""
     lanes, turns, _ = _lanes(tmp_path)
+    assert "Number(d.properties.road_id)" in ls.render_lanes(lanes, turns).html
     assert "Number(d.properties.road_id)" in ls.render_lanes(lanes, turns, street_view=True).html
-    assert "Number(d.properties.road_id)" not in ls.render_lanes(lanes, turns).html

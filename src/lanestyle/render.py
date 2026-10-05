@@ -101,7 +101,7 @@ _CLICK_JS = """<script>
 """
 
 
-# roadstyle's Street View panel answers road clicks only (an overlay click carries no ``streetView``), and a click on a lane is an overlay click: this passes it on as a click on the lane's road,
+# roadstyle's Street View panel and window answer road clicks only (an overlay click carries no ``streetView``), and a click on a lane is an overlay click: this passes it on as a click on the lane's road,
 # at the clicked point, so the panel and its map marker follow it.
 _STREET_VIEW_JS = """<script>
 (function(){
@@ -628,8 +628,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
         if s.get("type_label_zoom") is not None:
             js += _LABELS_JS.replace("__ZOOM__", json.dumps(s["type_label_zoom"]))
     js += _CASING_ZOOM_JS.replace("__ZOOM__", json.dumps(float(s["width_m_zoom"]))) + _NO_PATTERN_ON_RINGS_JS
-    if street_view:
-        js += _STREET_VIEW_JS
+    js += _STREET_VIEW_JS                                # the map's own Street View window needs it as much as the Street View page
     js = _ANCHOR_JS + js                                 # the helper first: the fillets are placed with it
     html = m.html
     i = html.rfind("</body>")
