@@ -635,12 +635,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
-socketserver.TCPServer.allow_reuse_address = True
+socketserver.ThreadingTCPServer.allow_reuse_address = True
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 here = str(Path(__file__).resolve().parent)
 for p in range(port, port + 20):                       # 8080 busy? hop to the next free port
     try:
-        httpd = socketserver.TCPServer(("", p), partial(Handler, directory=here))
+        httpd = socketserver.ThreadingTCPServer(("", p), partial(Handler, directory=here))
     except OSError:
         continue
     if p != port:
