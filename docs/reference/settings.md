@@ -36,7 +36,7 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d354
 | `default_width_m` | 3.25 | lane width where `width_m` is null |
 | `width_m_by_use` | `{"walk": 2.0, "bike": 1.5}` | the width where `width_m` is null, for a footpath (`walk`) and for an on-road bike lane: a `bike` lane beyond the link's motor lanes (`lane_num` > `lanes`; empty `lanes` counts as 0, as on a cycleway). Any other lane is `default_width_m` |
 | `casing_m` | 0.14 | the casing of a road shows this far outside its lanes on each side (a lane has none); the road's width is its lanes' plus twice this |
-| `width_m_zoom` | 16 | from this zoom on, lanes are their width in metres; roadstyle's class widths below |
+| `width_m_zoom` | 16 | from this zoom on, lanes are their width in metres and the roads have their casing (`casing_m`); roadstyle's class widths below, and no casing |
 
 roadstyle's own settings (palettes, base maps, labels, arrows, tunnels) go in the same `settings=`
 dict or a `roadstyle.json`: roadstyle's

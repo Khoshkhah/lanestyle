@@ -101,6 +101,18 @@ _CLICK_JS = """<script>
 """
 
 
+# roadstyle draws a road's casing at a width in pixels; at lane scale (from ``width_m_zoom``) the lanes are as wide as they are and the casing is their outline. Below that zoom the casing is
+# off (Kaveh: "just set it to not show the casing at zoom less than 16")
+_CASING_ZOOM_JS = """<script>
+(function(){
+  const z = __ZOOM__;
+  const hide = () => map.getStyle().layers.forEach(l => { if (/^roads-casing/.test(l.id)) map.setLayerZoomRange(l.id, z, 24); });
+  if (map.isStyleLoaded()) hide(); else map.once("load", hide);
+})();
+</script>
+"""
+
+
 # where a lane's layers go in the page: right after (or before) the fill layers of the lane's position in roadstyle's drawing order ("-8", "0", "4": its layers roads-fill-lv-8,
 # roads-fill, roads-fill-lv4 ..., docs/design/lanestyle_on_roadstyle_levels.md). ``lsAnchor(ids, position, before)``: the layer id, or null when the page has none.
 _ANCHOR_JS = """<script>
@@ -582,8 +594,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
         js += _click_js(turns, s, via)
         if s.get("type_label_zoom") is not None:
             js += _LABELS_JS.replace("__ZOOM__", json.dumps(s["type_label_zoom"]))
-    if not js:
-        return m
+    js += _CASING_ZOOM_JS.replace("__ZOOM__", json.dumps(float(s["width_m_zoom"])))
     js = _ANCHOR_JS + js                                 # the helper first: the fillets are placed with it
     html = m.html
     i = html.rfind("</body>")
