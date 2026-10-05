@@ -278,8 +278,8 @@ def _crossing(lane_id="2_1", painted=True, to_left=True, start=200.0, end=203.0)
 
 
 def test_a_zebra_is_one_rectangle_cut_into_stripes_parallel_to_the_lanes(tmp_path):
-    """The crossing's rectangle (3 m along the road, 6.5 m across) cut into stripes, each long along the road (x) and stripe_m thin
-    across it (y), then clipped to the lane the table names (3.25 m wide): the stripes are the same as the rectangle's, only those on the lane."""
+    """The crossing's rectangle (3 m along the road, 6.5 m across) cut into stripes, each long along the road (x) and stripe_m thin across it (y): every stripe of the rectangle, not clipped to the
+    lanes (the table names a 3.25 m lane across 1.6 .. 4.85, and the zebra still has all seven stripes of its 6.5 m)."""
     from lanestyle.render import _zebra_stripes
 
     gmns, _ = _with_walking(tmp_path)
@@ -287,15 +287,35 @@ def test_a_zebra_is_one_rectangle_cut_into_stripes_parallel_to_the_lanes(tmp_pat
     lanes["width_m"] = lanes["width_m"].fillna(3.25)
     st = ls.lane_settings()["zebra"]
     rings, links, foot = _zebra_stripes(lanes, _crossing(), st)
-    assert len(rings) == 3                                         # 6.5 m across: stripes 0.5 m every 1.0 m; the lane (3.25 m, across 1.6 .. 4.85) keeps the middle three
+    assert len(rings) == 7                                         # 6.5 m across: stripes 0.5 m every 1.0 m, the row centred
     for ring in rings:
         xs, ys = [p[0] for p in ring], [p[1] for p in ring]
-        assert (max(xs) - min(xs)) * 56700 == pytest.approx(3.0, abs=0.05)         # as long as the zebra is wide, whatever the lane's ends
+        assert (max(xs) - min(xs)) * 56700 == pytest.approx(3.0, abs=0.05)         # as long as the zebra is wide
         assert (max(ys) - min(ys)) * 111320 == pytest.approx(0.5, abs=0.05)        # one stripe across it
     ys = sorted(sum(p[1] for p in r) / len(r) for r in rings)
-    assert all(abs((ys[i + 1] - ys[i]) * 111320 - 1.0) < 0.05 for i in range(2))     # equally spaced: cut from one rectangle
+    assert all(abs((ys[i + 1] - ys[i]) * 111320 - 1.0) < 0.05 for i in range(6))     # equally spaced: cut from one rectangle
     assert foot is not None and foot.geom_type == "Polygon" and len(links) == len(rings)
     assert _zebra_stripes(lanes, _crossing(painted=False), st) == ([], [], None)       # unpainted: none
+
+
+def test_a_stripe_belongs_to_the_road_of_the_lane_under_it(tmp_path):
+    """Two lanes of two links named by one crossing (across 0 .. 3.25 and 3.25 .. 6.5): the stripes in the first half belong to the first link, the rest to the second."""
+    import pandas as pd
+
+    from lanestyle.render import _zebra_stripes
+
+    gmns, _ = _with_walking(tmp_path)
+    lanes, _t = ls.from_gmns(gmns, modes=("driving", "walking"))
+    lanes["width_m"] = lanes["width_m"].fillna(3.25)
+    road = lanes[lanes["lane_id"].isin(["1_1", "2_1"])]["lane_id"].tolist()
+    two = pd.concat([_crossing(road[0]), _crossing(road[1])], ignore_index=True)
+    two.loc[0, ["across_from", "across_to"]] = [0.0, 3.25]
+    two.loc[1, ["across_from", "across_to"]] = [3.25, 6.5]
+    rings, links, _ = _zebra_stripes(lanes, two, ls.lane_settings()["zebra"])
+    ys = [sum(p[1] for p in r) / len(r) for r in rings]
+    order = [lk for _, lk in sorted(zip(ys, links))]
+    link_a, link_b = {str(lanes.set_index("lane_id").loc[l, "link_id"]) for l in road[:1]}.pop(), {str(lanes.set_index("lane_id").loc[l, "link_id"]) for l in road[1:]}.pop()
+    assert {str(x) for x in order[:3]} == {link_a} and {str(x) for x in order[-3:]} == {link_b}, order
 
 
 def test_a_painted_crossing_adds_the_zebra_layer_and_the_crossing_way_stays_under_the_road(tmp_path):

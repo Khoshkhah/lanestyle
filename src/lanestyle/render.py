@@ -354,19 +354,15 @@ def _widths(g, s):
 
 
 def _zebra_stripes(g, cr, st):
-    """The zebra stripes from duckOSM's crossing table, ``(rings, links, footprint)``: the stripes as lon/lat polygon rings, the link of each (the first lane the crossing names) and the zebras'
-    rectangles as one lon/lat geometry (the lane lines stop there). ``cr``: :func:`lanestyle.read_crossings`.
+    """The zebra stripes from duckOSM's crossing table, ``(rings, links, footprint)``: the stripes as lon/lat polygon rings, the link of each, and the zebras' rectangles as one lon/lat geometry (the lane
+    lines and arrows keep clear of it). ``cr``: :func:`lanestyle.read_crossings`.
 
-    One rectangle per crossing, the table's ``crossing.geom``: ``width`` along the road, ``length`` across the whole road it crosses.
-    It is cut into stripes across its length, ``stripe_m`` thick, ``stripe_m + gap_m`` apart (the row centred), each as long as the
-    rectangle is wide: parallel to the lanes, one straight band. Then a real clip: each stripe is intersected with the true shape of
-    the lanes the crossing names in ``lane_crossing`` (each lane's line, from one rectangle-width before its ``start_lr`` to one
-    after its ``end_lr``, ``width_m`` wide): the paint is only on those lanes, and a lane's edge is the stripe's edge. The extra
-    rectangle-width on each side of a lane's stretch means the clip only ever cuts across the road, never along it, so a stripe
-    that stays is as long as the zebra is wide. Nothing else is done to the stripes: no projection, no merging, no shrinking."""
+    One rectangle per crossing, the table's ``crossing.geom``: ``width`` along the road, ``length`` across the whole road it crosses. It is cut into stripes across its length, ``stripe_m``
+    thick, ``stripe_m + gap_m`` apart (the row centred), each as long as the rectangle is wide: parallel to the lanes. That is all: the stripes are not clipped to the lanes, the data's rectangle is
+    the zebra. A stripe belongs to the road of the lane that lies under it, told by the table's ``across_from`` .. ``across_to`` of each lane (metres from the rectangle's first edge); where no lane
+    lies under it (an island), to the nearest."""
     import math
 
-    import shapely
     from shapely import wkt as _w
     from shapely.geometry import Polygon
 
@@ -376,18 +372,12 @@ def _zebra_stripes(g, cr, st):
     if not len(cr):
         return [], [], None
     import geopandas as gpd
-
-    from shapely.ops import substring
+    import shapely
 
     u = g.estimate_utm_crs()
-    geom = dict(zip(g["lane_id"], g.to_crs(u).geometry))
-    wid = dict(zip(g["lane_id"], g["width_m"]))
     pitch, thick = st["stripe_m"] + st["gap_m"], st["stripe_m"]
     stripes, foot, links = [], [], []
     link_of = dict(zip(g["lane_id"], g["link_id"]))
-    # every road lane, to find the ones that cross the zebra's road: a zebra across a side road does not run onto the carriageway it joins
-    others = [(lid, ln) for lid, ln, use in zip(g["lane_id"], g.to_crs(u).geometry, g["use"]) if use != "walk" and ln is not None and ln.geom_type == "LineString"]
-    other_tree = shapely.STRtree([ln for _, ln in others])
     for _cid, grp in cr.groupby("crossing_id"):
         rect = gpd.GeoSeries([_w.loads(grp["cgeom"].iloc[0])], crs=4326).to_crs(u).iloc[0]
         if rect.geom_type != "Polygon":
@@ -395,48 +385,21 @@ def _zebra_stripes(g, cr, st):
         (x0, y0), (x1, y1), _, (x3, y3) = list(rect.exterior.coords)[:4]
         length = math.hypot(x1 - x0, y1 - y0)                       # across the road: the rectangle's first side
         wx, wy = x3 - x0, y3 - y0                                   # along the road: the second side, as long as the zebra is wide
-        along = math.hypot(wx, wy)
-        if length < thick or along < 0.5:
+        if length < thick or math.hypot(wx, wy) < 0.5:
+            continue
+        under = [(r.across_from, r.across_to, int(link_of[r.lane_id])) for r in grp.itertuples() if r.lane_id in link_of]
+        if not under:
             continue
         dx, dy = (x1 - x0) / length, (y1 - y0) / length
-        lanes = []                                                  # the true shape of each named lane, a rectangle-width beyond its stretch
-        for r in grp.itertuples():
-            ln = geom.get(r.lane_id)
-            if ln is None or ln.geom_type != "LineString":
-                continue
-            sub = substring(ln, max(r.start_lr - along, 0.0), min(r.end_lr + along, ln.length))
-            if sub.geom_type == "LineString" and sub.length > 0.3:
-                lanes.append(sub.buffer(float(wid[r.lane_id]) / 2, cap_style="flat", join_style="mitre", mitre_limit=2.0))
-        if not lanes:
-            continue
-        # the lanes of a road meet at joints that are not exact (a flat end against the next lane's flat start): close seams under 0.6 m, which
-        # leaves the outer border where it is, so consecutive lanes clip as the one road they are
-        road = shapely.union_all(lanes).buffer(0.3, join_style="mitre", mitre_limit=2.0).buffer(-0.3, join_style="mitre", mitre_limit=2.0)
-        ax, ay = wx / along, wy / along                           # the zebra's road direction
-        crossing_roads = []
-        for k in other_tree.query(rect):
-            lid, ln = others[k]
-            if lid in set(grp["lane_id"]):
-                continue
-            p = ln.interpolate(ln.project(rect.centroid))
-            q0, q1 = ln.interpolate(max(ln.project(p) - 0.5, 0)), ln.interpolate(min(ln.project(p) + 0.5, ln.length))
-            nn = math.hypot(q1.x - q0.x, q1.y - q0.y)
-            if nn and abs(((q1.x - q0.x) * ax + (q1.y - q0.y) * ay) / nn) < 0.5:              # runs across the zebra's road, not along it
-                crossing_roads.append(ln.buffer(float(wid[lid]) / 2, cap_style="flat"))
-        if crossing_roads:
-            road = road.difference(shapely.union_all(crossing_roads))
         n = int((length - thick) // pitch) + 1
         first = (length - ((n - 1) * pitch + thick)) / 2
         for i in range(n):
             t0 = first + i * pitch
             a, b = (x0 + dx * t0, y0 + dy * t0), (x0 + dx * (t0 + thick), y0 + dy * (t0 + thick))
-            on = Polygon([a, b, (b[0] + wx, b[1] + wy), (a[0] + wx, a[1] + wy)]).intersection(road)
-            keep = [q for q in getattr(on, "geoms", [on]) if q.geom_type == "Polygon" and q.area > 0.02]
-            stripes += keep
-            links += [int(link_of[next(l for l in grp["lane_id"] if l in link_of)])] * len(keep)
-        on = rect.intersection(road)
-        if not on.is_empty:
-            foot.append(on)
+            stripes.append(Polygon([a, b, (b[0] + wx, b[1] + wy), (a[0] + wx, a[1] + wy)]))
+            mid = t0 + thick / 2
+            links.append(min(under, key=lambda x: 0.0 if x[0] <= mid <= x[1] else min(abs(mid - x[0]), abs(mid - x[1])))[2])
+        foot.append(rect)
     if not stripes:
         return [], [], None
     back = gpd.GeoSeries(stripes, crs=u).to_crs(4326)
