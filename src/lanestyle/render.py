@@ -106,8 +106,8 @@ _CLICK_JS = """<script>
 _CASING_ZOOM_JS = """<script>
 (function(){
   const z = __ZOOM__;
-  const hide = () => map.getStyle().layers.forEach(l => { if (/^roads-casing/.test(l.id)) map.setLayerZoomRange(l.id, z, 24); });
-  if (map.isStyleLoaded()) hide(); else map.once("load", hide);
+  const hide = () => { try { map.getStyle().layers.forEach(l => { if (/^roads-casing/.test(l.id) && map.getLayer(l.id).minzoom !== z) map.setLayerZoomRange(l.id, z, 24); }); } catch (e) {} };
+  hide(); map.on("styledata", hide); map.once("idle", hide);       // the style may not be ready when this runs; the full map's was not
 })();
 </script>
 """
