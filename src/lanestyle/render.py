@@ -101,6 +101,27 @@ _CLICK_JS = """<script>
 """
 
 
+# roadstyle's Street View panel answers road clicks only (an overlay click carries no ``streetView``), and a click on a lane is an overlay click: this passes it on as a click on the lane's road,
+# at the clicked point, so the panel and its map marker follow it.
+_STREET_VIEW_JS = """<script>
+(function(){
+  let at = null;
+  map.on("click", e => { at = e.lngLat; });                       // after roadstyle's own handler, which has just dispatched rs:select
+  document.addEventListener("rs:select", e => {
+    const d = e.detail || {};
+    if (d.overlay !== "lanes" || (d.properties || {}).road_id == null) return;
+    setTimeout(() => {
+      const rid = Number(d.properties.road_id), id = rsQuery(p => Number(p.edge_id) === rid)[0];     // the lane's road_id is a rounded number, the road's edge_id an exact string
+      if (id == null || !at) return;
+      const f = _feats()[id];
+      document.dispatchEvent(new CustomEvent("rs:select", {detail: {id: id, layer: null, properties: (f || {}).properties || {}, streetView: _svPick(at, f, id)}}));
+    }, 0);
+  });
+})();
+</script>
+"""
+
+
 # roadstyle draws a road's casing at a width in pixels; at lane scale (from ``width_m_zoom``) the lanes are as wide as they are and the casing is their outline. Below that zoom the casing is
 # off (Kaveh: "just set it to not show the casing at zoom less than 16")
 _CASING_ZOOM_JS = """<script>
@@ -607,6 +628,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
         if s.get("type_label_zoom") is not None:
             js += _LABELS_JS.replace("__ZOOM__", json.dumps(s["type_label_zoom"]))
     js += _CASING_ZOOM_JS.replace("__ZOOM__", json.dumps(float(s["width_m_zoom"]))) + _NO_PATTERN_ON_RINGS_JS
+    if street_view:
+        js += _STREET_VIEW_JS
     js = _ANCHOR_JS + js                                 # the helper first: the fillets are placed with it
     html = m.html
     i = html.rfind("</body>")
