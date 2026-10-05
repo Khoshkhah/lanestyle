@@ -16,10 +16,12 @@ One arrow per lane, from the movements that leave it (the same `turns` table `_l
 |---|---|
 | `thru`, `left`, `right`, `uturn` | the plain arrow |
 | a mix (`left + thru`, `thru + right`, `left + right`, …) | the combined arrow: a straight shaft with a branch per turn |
-| `diverge` (fork), `merge`, `end`, a bus or bike lane with no turn | none |
+| `diverge` (fork) | the turn letters of its branches' movement codes (`turns["turn"]`, see below); all branches straight: the plain arrow |
+| `merge`, `end`, a bus or bike lane with no turn | none |
 
-- **Fork and merge get no arrow.** A fork is a lane splitting into lanes that each carry their own arrow; a merge is the reverse. Roads
-  do not paint them, and the geometry and connectors already show them. The text label still names them.
+- **A merge gets no arrow**; it is shape, and the geometry and connectors already show it. The text label still names it.
+- **A fork gets the arrow of its branches (2026-10-04).** The shape comes from the GMNS data, not from a calculation here: the turn letter (L, T, R) of the `mvmt_code` of each `diverge` movement, which duckOSM sets by the place of the branch (`docs/design/gmns_fork_letters.md` in duckOSM: the straightest branch is T, a branch 8 degrees or more to its left L, to its right R). `gmns.from_gmns` puts it in `turns["turn"]` (None for any other movement),
+  `lane_arrows` uses it in place of `type`. Avenue Prince Pierre (Monaco, lane `6602176641083707803_1`): left + thru instead of the plain arrow. A GMNS file without `mvmt_code`, or from before duckOSM set the letters, gives the plain arrow as before.
 - **Generic style** (Kaveh's choice, not the French or any national set): a straight shaft, a triangular head, and a branch at 90°
   for left and right. A U-turn is a hook back. One shape set, drawn as SVG paths.
 - **Placement:** one arrow per lane, 10 m before the lane's end (the stop line), pointing along the lane. A lane under 20 m

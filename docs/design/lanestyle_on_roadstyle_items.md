@@ -45,6 +45,11 @@ Where two roads of one band meet, the one with the higher **order** has the late
 
 Both get the class order plus 100, above every class. A road with no class takes no part in the order, as before.
 
+### The road's line is simplified to 2 cm
+
+The middle line has a vertex at every vertex of both kerb lanes, and on a smoothed ring that is one every 10 cm (46 vertices over 4.4 m). roadstyle's tunnel pattern (`-pat`, a translucent white dashed stroke as wide as the road, drawn over the items) piles up the joins of
+such a line into fans on a tight ring (Monaco's Giratoire Aureglia, in a tunnel). `link_roads` simplifies the line with a 2 cm tolerance (the ends are kept); the median road has 3 vertices. A few shards of the pattern remained on a ring of 6 m radius with a road 6.8 m wide, so lanestyle turns the pattern off (`tunnel_fill_dash: []` in `_ROADSTYLE`, Kaveh 2026-10-04): a tunnel is the faded lane colour and roadstyle's two-tone casing, without the light dashes along its lanes.
+
 ### Roads that meet share their end point, exactly
 
 roadstyle finds where roads meet by **exact equality of their end points** (`compute_levels`: the end points of every road, as node numbers). The rule that a road's casing is not drawn after the fill of the roads that meet it, and the merging of the heads, work only

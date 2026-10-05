@@ -31,6 +31,7 @@ ls.render_lanes(lanes, turns=turns, settings={"lanes": {"colors": {"bus": "#d354
 | `connectors_clickable` | false | a connector (the surface joining two lanes at a junction) can be clicked and hovered like a lane; off, the click goes to the lane under it (or to nothing) |
 | `tunnel_body` | `#f6f4ee` | the land colour of an opaque base drawn under the faded fill of tunnel lanes, so the casing ring of one lane's round end does not show inside the next; `""` = off |
 | `fillet_m` | 0 (off) | pave gaps narrower than twice this between lane surfaces |
+| `arrows` | `{length_m: 4, end_m: 10, repeat_m: 60}` | the painted lane arrows (`null`: none): their length, how far from the lane's end the move arrow stands, and the spacing of the plain direction arrow along a long lane |
 | `type_label_zoom` | `null` | a zoom number draws each lane's turns along it (`left + thru`) from that zoom; `null` (default) = no labels: they are in the popup as `lane_type` |
 | `default_width_m` | 3.25 | lane width where `width_m` is null |
 | `width_m_by_use` | `{"walk": 2.0, "bike": 1.5}` | the width where `width_m` is null, for a footpath (`walk`) and for an on-road bike lane: a `bike` lane beyond the link's motor lanes (`lane_num` > `lanes`; empty `lanes` counts as 0, as on a cycleway). Any other lane is `default_width_m` |
