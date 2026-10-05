@@ -147,7 +147,7 @@ def _from_gmns_mode(gmns_db, mode, source_db):
     With duckOSM's ``lane_connector`` table, each lane-to-lane connector is a row too
     (``connector`` True, ``from_lane`` / ``to_lane``; its level and road class from the lane it leaves).
 
-    ``turns``: a DataFrame ``from_lane``, ``to_lane``, ``type`` (the movement type; ``uturn`` is
+    ``turns``: a DataFrame ``from_lane``, ``to_lane``, ``type`` (the movement type; ``turn``: ``left`` / ``thru`` / ``right`` from the code of a ``diverge`` movement, else None; ``uturn`` is
     drawn in its own colour), from ``movement``: each lane of the inbound link in
     ``start_ib_lane``..``end_ib_lane`` into the outbound lane at the same place in
     ``start_ob_lane``..``end_ob_lane`` (equal-length ranges paired in order, as osm2gmns and duckOSM
@@ -208,8 +208,9 @@ def _from_gmns_mode(gmns_db, mode, source_db):
             route = dict(con.execute(f"SELECT link_id, list(along_link_id) FROM {g}.link_along GROUP BY 1").fetchall())
         turns = pd.DataFrame({"from_lane": [], "to_lane": [], "type": []}, dtype=object)
         if _cols(con, g, "movement"):
+            letter = "substr(m.mvmt_code, 3, 1)" if "mvmt_code" in _cols(con, g, "movement") else "NULL"      # the turn letter (L, T, R) of the GMNS movement code
             turns = con.execute(
-                f"SELECT DISTINCT il.lane_id::VARCHAR AS from_lane, ol.lane_id::VARCHAR AS to_lane, m.type "
+                f"SELECT DISTINCT il.lane_id::VARCHAR AS from_lane, ol.lane_id::VARCHAR AS to_lane, m.type, {letter} AS code "
                 f"FROM {g}.movement m "
                 f"JOIN {g}.lane il ON il.link_id = m.ib_link_id AND (m.start_ib_lane IS NULL OR "
                 f"  il.lane_num BETWEEN m.start_ib_lane AND COALESCE(m.end_ib_lane, m.start_ib_lane)) "
@@ -220,6 +221,9 @@ def _from_gmns_mode(gmns_db, mode, source_db):
         if lvl.startswith(", e."):
             con.execute(f"DETACH {src}")
         con.close()
+    if "code" in turns:                          # a fork's branch says which way it goes in the code of its movement (duckOSM, docs/design/gmns_fork_letters.md): the arrow of its lane
+        turns["turn"] = [{"L": "left", "T": "thru", "R": "right"}.get(c) if t == "diverge" else None for c, t in zip(turns["code"], turns["type"])]
+        turns = turns.drop(columns="code")
     for c in [c for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id", "osm_id", "along_link_id") if c in df]:
         df[c] = df[c].astype("Int64")                       # BIGINT hash ids: never float64
     df["roundabout"] = df["link_id"].isin(_ring_links(source_db, mode))

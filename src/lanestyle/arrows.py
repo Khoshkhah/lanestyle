@@ -69,7 +69,8 @@ def lane_arrows(lanes, turns, s, avoid=None):
         return None
     turns_of = {}
     if turns is not None and len(turns):
-        for a, t in zip(turns["from_lane"].astype(str), turns["type"] if "type" in turns else []):
+        kind = turns["type"].where(turns["turn"].isna(), turns["turn"]) if "turn" in turns and "type" in turns else (turns["type"] if "type" in turns else [])      # a fork's branch by its movement code
+        for a, t in zip(turns["from_lane"].astype(str), kind):
             turns_of.setdefault(a, set()).add(t)
     g = lanes[~lanes["connector"].fillna(False).astype(bool) & (lanes["use"] != "walk")] if "connector" in lanes else lanes[lanes["use"] != "walk"]
     siblings = g.groupby("link_id")["lane_id"].apply(lambda x: [str(i) for i in x]).to_dict()
@@ -81,7 +82,8 @@ def lane_arrows(lanes, turns, s, avoid=None):
             continue
         end = geom.length - back if geom.length >= 2 * back else geom.length / 2
         # the lane's move arrow at its end, then the plain direction arrow back along it every ``repeat_m`` (one on a lane with no move)
-        at = [(end, _kinds(str(r.lane_id), siblings[r.link_id], turns_of) or {"thru"})]
+        move = _kinds(str(r.lane_id), siblings[r.link_id], turns_of)
+        at = [(end, move or {"thru"})]
         while every and at[-1][0] - every > 2 * L:
             at.append((at[-1][0] - every, {"thru"}))
         for d, kinds in at:

@@ -623,3 +623,23 @@ def test_walkers_stepping_off_a_road_are_no_turn_of_the_car_lane(tmp_path):
     pairs = set(zip(own["from_lane"], own["to_lane"]))
     assert ("2_1", "5_1") not in pairs and ("5_1", "2_1") in pairs
     assert set(zip(turns[turns["walkers"].astype(bool)]["from_lane"], turns[turns["walkers"].astype(bool)]["to_lane"])) == {("2_1", "5_1")}
+
+
+def test_a_forking_lane_gets_the_arrow_its_movement_codes_say():
+    """docs/design/lane_arrows.md: a lane whose moves are all ``diverge`` has the arrow of the turn letters of their codes (``turn``, from duckOSM's ``mvmt_code``): left + thru is the combined arrow; thru alone stays the plain one."""
+    import geopandas as gpd
+    import pandas as pd
+    from shapely.geometry import LineString
+
+    from lanestyle.arrows import lane_arrows
+
+    m = 1 / 111320
+    lanes = gpd.GeoDataFrame({"lane_id": ["1_1", "1_2"], "link_id": [1, 1], "use": ["auto"] * 2, "width_m": [3.25] * 2, "layer": [None] * 2, "bridge": [None] * 2, "tunnel": [None] * 2},
+                             geometry=[LineString([(18.0, 59.0), (18.0, 59.0 + 40 * m)]), LineString([(18.00005, 59.0), (18.00005, 59.0 + 40 * m)])], crs=4326)
+    s = {"length_m": 4, "end_m": 10, "repeat_m": 60}
+    plain = pd.DataFrame({"from_lane": ["1_1", "1_1"], "to_lane": ["2_1", "3_1"], "type": ["diverge", "diverge"], "turn": [None, None]})
+    fork = pd.DataFrame({"from_lane": ["1_1", "1_1"], "to_lane": ["2_1", "3_1"], "type": ["diverge", "diverge"], "turn": ["thru", "left"]})
+    area = lambda t: max(shape(f["geometry"]).area for f in lane_arrows(lanes, t, s)["features"])      # noqa: E731
+    from shapely.geometry import shape
+    assert area(fork) > 1.3 * area(plain)                                  # the combined arrow has a branch
+    assert area(pd.DataFrame({**plain.to_dict("list"), "turn": ["thru", "thru"]})) == area(plain)      # every branch straight: the plain arrow

@@ -104,6 +104,7 @@ def link_roads(g, casing_m):
             line = middle(ls[0], ls[-1])
         else:
             line = ls[0]
+        line = line.simplify(0.02)                      # the middle line has a vertex at every vertex of both lanes (every 10 cm on a ring): a wide, translucent stroke (roadstyle's tunnel dashes) piles up its joins into fans; 2 cm is not seen
         first = lanes_of[road].iloc[0]
         width = float(sum(lanes_of[k]["width_m"].sum() for k in links)) + 2 * casing_m
         rows.append({"edge_id": int(road), "width_m": width, **{c: first[c] for c in keep}})

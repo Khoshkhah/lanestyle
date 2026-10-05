@@ -124,7 +124,7 @@ _CLASSES = ("motorway", "trunk", "primary", "secondary", "tertiary", "unclassifi
 # (a faded fill with dashes, a deck casing), drawn whole by the one rule; the class dashes (footway, path ...) stay,
 # coloured by mode group.
 _ROADSTYLE = {"config": {"tunnel_opacity_scale": 0.75, "tunnel_gap_shade": 0.15, "tunnel_dash_shade": 0.3,
-                         "tunnel_fill_dash_color": "rgba(255,255,255,0.35)"},
+                         "tunnel_fill_dash": []},         # no light dashes along a tunnel: a translucent stroke as wide as the road piles up into shards on a tight ring; the tunnel is the faded lane colour and the two-tone casing
               # one grey per class, and no class dashes: a footway, path, cycleway or track lane is a solid strip like any lane
               "palettes": {name: {c: {"fill": "#a3a3a3", "casing": "#5a5a5a", "dash": None} for c in _CLASSES}
                            for name in ("mono", "carto", "highsat")}}
@@ -245,10 +245,12 @@ _USE_ROWS_JS = """<style>.co-ctrl,.co-lg{display:none!important}</style>
 
 
 def _lane_types(g, turns):
-    """Each lane's type label: the turns that leave it (``left + thru``, ``U-turn``, ``fork``, ``merge``)
+    """Each lane's type label: the turns that leave it (``left + thru``, ``U-turn``, ``fork`` (a fork whose branches have no letter), ``merge``)
     or ``end`` where none does; a bus or bike lane says so first (``bus · thru``)."""
     out = {}
     types = turns["type"] if "type" in turns else ["turn"] * len(turns)
+    if "turn" in turns:                          # a fork's branch says which way it goes (duckOSM's movement code): the lane is "left" or "thru", not "fork"
+        types = types.where(turns["turn"].isna(), turns["turn"])
     for a, t in zip(turns["from_lane"].astype(str), types):
         out.setdefault(a, set()).add(t)
 
