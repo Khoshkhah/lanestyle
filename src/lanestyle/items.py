@@ -98,8 +98,8 @@ def link_roads(g, casing_m):
         if not ls:
             continue
         if len(links) == 2 and lines_of(links[1]):
-            other = lines_of(links[1])[0]
-            line = middle(ls[0], LineString(list(other.coords)[::-1]))             # the kerb lane of each direction, the other one reversed
+            other = lines_of(links[1])[-1]
+            line = middle(ls[-1], LineString(list(other.coords)[::-1]))            # the kerb lane of each direction (its last lane), the other one reversed: for 1 + 2 lanes the inner lanes' middle is half a lane off the road
         elif len(ls) > 1:
             line = middle(ls[0], ls[-1])
         else:

@@ -174,3 +174,22 @@ def test_the_widest_road_decides_where_roads_meet_and_a_narrower_one_gets_a_hook
     assert start_out[2].coords[0] == mid and start_out[2].coords[1] == (10.0, 1.6) and start_out[2].coords[-1] == (10.0, 5.0)     # the point, then the old start: no fold
     far_out = items._snap_ends([ring_a, ring_b, far], [(1, 2), (2, 3), (4, 2)], [6.78, 6.78, 3.53])
     assert far_out[2].coords[-1] == far_out[0].coords[-1] and len(far_out[2].coords) == 2     # too far from the wide road: the old mean of all the ends
+
+
+def test_a_two_way_road_with_unequal_lanes_is_drawn_where_its_lanes_are():
+    """A road of 2 lanes one way and 1 the other: its line is the middle of the kerb lanes, so the lanes laid across its band cover their own GMNS lines (the inner lanes' middle was half a lane off)."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    m = 1 / 111320
+    kx = 1 / (111320 * 0.5101)                                      # degrees of longitude per metre at 59.32 N
+    line = lambda x0, x1, y: LineString([(18.0 + x0 * kx, 59.32 + y * m), (18.0 + x1 * kx, 59.32 + y * m)])       # noqa: E731
+    g = gpd.GeoDataFrame({"link_id": [1, 1, 2], "reverse_link_id": [2, 2, 1], "lane_id": ["1_1", "1_2", "2_1"], "lane_num": [1, 2, 1], "width_m": [3.25] * 3,
+                          "from_node_id": [10, 10, 20], "to_node_id": [20, 20, 10], "highway": ["secondary"] * 3, "use": ["auto"] * 3},
+                         geometry=[line(0, 100, -1.625), line(0, 100, -4.875), line(100, 0, 1.625)], crs=4326)       # eastbound lanes on the south side, the westbound lane on the north
+    roads = items.link_roads(g, 0.14)
+    u = g.to_crs(g.estimate_utm_crs()).reset_index(drop=True)
+    shapes = items.lane_shapes(u, roads.to_crs(u.crs), roads.attrs["road_of"])
+    for k in u.index:
+        ideal = u.geometry[k].buffer(3.25 / 2, cap_style="flat")
+        assert ideal.difference(shapes[k]).area / ideal.area < 0.1, (u.lane_id[k], ideal.difference(shapes[k]).area / ideal.area)

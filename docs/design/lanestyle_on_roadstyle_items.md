@@ -45,6 +45,12 @@ Where two roads of one band meet, the one with the higher **order** has the late
 
 Both get the class order plus 100, above every class. A road with no class takes no part in the order, as before.
 
+### The line of a two-way road is the middle of its kerb lanes (2026-10-04)
+
+A street's two directions are one road; its line is the middle between the two **kerb-side** lanes (the last lane of each direction, one reversed), and the lanes are laid across the band round it. The line was the middle of the two **inner** lanes (lane 1 of each): the same for 1 + 1 and 2 + 2 lanes,
+half a lane off for 1 + 2 (Monaco: 7 such roads, e.g. `423632264#1f`, lane `6594925326949888649_2`), where every lane was drawn 1.5 m from its GMNS line and the arrows, lines and zebras, which follow the lines, stood partly outside the drawn lanes. Measured as the share of a lane's own ground
+(its line, `width_m` wide) outside the lane as drawn: 23 of 3,176 lanes over 25 %, 9 after the change (7 of the 7 unequal roads before, 1 after).
+
 ### The road's line is simplified to 2 cm
 
 The middle line has a vertex at every vertex of both kerb lanes, and on a smoothed ring that is one every 10 cm (46 vertices over 4.4 m). roadstyle's tunnel pattern (`-pat`, a translucent white dashed stroke as wide as the road, drawn over the items) piles up the joins of
