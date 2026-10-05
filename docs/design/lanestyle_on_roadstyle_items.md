@@ -48,7 +48,7 @@ Both get the class order plus 100, above every class. A road with no class takes
 ### The road's line is simplified to 2 cm
 
 The middle line has a vertex at every vertex of both kerb lanes, and on a smoothed ring that is one every 10 cm (46 vertices over 4.4 m). roadstyle's tunnel pattern (`-pat`, a translucent white dashed stroke as wide as the road, drawn over the items) piles up the joins of
-such a line into fans on a tight ring (Monaco's Giratoire Aureglia, in a tunnel). `link_roads` simplifies the line with a 2 cm tolerance (the ends are kept); the median road has 3 vertices. A few shards of the pattern remained on a ring of 6 m radius with a road 6.8 m wide, so lanestyle turns the pattern off (`tunnel_fill_dash: []` in `_ROADSTYLE`, Kaveh 2026-10-04): a tunnel is the faded lane colour and roadstyle's two-tone casing, without the light dashes along its lanes.
+such a line into fans on a tight ring (Monaco's Giratoire Aureglia, in a tunnel). `link_roads` simplifies the line with a 2 cm tolerance (the ends are kept); the median road has 3 vertices. A few shards of the pattern remained on a ring of 6 m radius with a road 6.8 m wide, so lanestyle keeps the pattern on every tunnel road **except a roundabout's** (Kaveh, 2026-10-04: first it was turned off for all tunnels, "remove it only from the tunnel roundabout"): a page script filters the pattern layers (`roads-fill…-pat`) with `not roundabout`. The tunnel is the faded lane colour, the two-tone casing and, off the rings, the light dashes along its lanes.
 
 ### Roads that meet share their end point, exactly
 

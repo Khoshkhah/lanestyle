@@ -113,6 +113,18 @@ _CASING_ZOOM_JS = """<script>
 """
 
 
+# roadstyle's tunnel pattern (light dashes) is a translucent stroke as wide as the road: on a roundabout ring, tight against the lane width, its dashes pile up into shards. The pattern stays on every
+# tunnel road but a roundabout's (Kaveh: "remove it only from the tunnel roundabout")
+_NO_PATTERN_ON_RINGS_JS = """<script>
+(function(){
+  const fix = () => { try { map.getStyle().layers.forEach(l => { if (/^roads-fill.*-pat$/.test(l.id)) { const f = map.getFilter(l.id);
+      if (f && !JSON.stringify(f).includes('"roundabout"')) map.setFilter(l.id, ["all", f, ["!", ["to-boolean", ["get", "roundabout"]]]]); } }); } catch (e) {} };
+  fix(); map.on("styledata", fix); map.once("idle", fix);
+})();
+</script>
+"""
+
+
 # where a lane's layers go in the page: right after (or before) the fill layers of the lane's position in roadstyle's drawing order ("-8", "0", "4": its layers roads-fill-lv-8,
 # roads-fill, roads-fill-lv4 ..., docs/design/lanestyle_on_roadstyle_levels.md). ``lsAnchor(ids, position, before)``: the layer id, or null when the page has none.
 _ANCHOR_JS = """<script>
@@ -136,7 +148,7 @@ _CLASSES = ("motorway", "trunk", "primary", "secondary", "tertiary", "unclassifi
 # (a faded fill with dashes, a deck casing), drawn whole by the one rule; the class dashes (footway, path ...) stay,
 # coloured by mode group.
 _ROADSTYLE = {"config": {"tunnel_opacity_scale": 0.75, "tunnel_gap_shade": 0.15, "tunnel_dash_shade": 0.3,
-                         "tunnel_fill_dash": []},         # no light dashes along a tunnel: a translucent stroke as wide as the road piles up into shards on a tight ring; the tunnel is the faded lane colour and the two-tone casing
+                         "tunnel_fill_dash_color": "rgba(255,255,255,0.35)"},      # the light dashes along a tunnel (its pattern) are on; the road lines are simplified (items.link_roads) so they do not fan
               # one grey per class, and no class dashes: a footway, path, cycleway or track lane is a solid strip like any lane
               "palettes": {name: {c: {"fill": "#a3a3a3", "casing": "#5a5a5a", "dash": None} for c in _CLASSES}
                            for name in ("mono", "carto", "highsat")}}
@@ -594,7 +606,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
         js += _click_js(turns, s, via)
         if s.get("type_label_zoom") is not None:
             js += _LABELS_JS.replace("__ZOOM__", json.dumps(s["type_label_zoom"]))
-    js += _CASING_ZOOM_JS.replace("__ZOOM__", json.dumps(float(s["width_m_zoom"])))
+    js += _CASING_ZOOM_JS.replace("__ZOOM__", json.dumps(float(s["width_m_zoom"]))) + _NO_PATTERN_ON_RINGS_JS
     js = _ANCHOR_JS + js                                 # the helper first: the fillets are placed with it
     html = m.html
     i = html.rfind("</body>")
