@@ -65,4 +65,5 @@ def lane_items(roads):
                 rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]
     if marks_fc:
         overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
-    return overlays, {"width_m_col": "width_m"}
+    # as the lane page: no road fill (the lanes are the surface), no roadstyle one-way chevrons or street names (lanestyle draws its own marks)
+    return overlays, {"width_m_col": "width_m", "road_fill": False, "arrows": False, "labels": False}
