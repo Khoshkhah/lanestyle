@@ -70,5 +70,9 @@ def lane_items(roads):
     test = os.environ.get("LANESTYLE_CASING_COLOR")       # a casing colour of its own for inspecting (2026-10-10: grey lanes, grey casings)
     if test:
         pal = {c: {**v, "casing": test} for c, v in rs.palette_to_dict("amber").items()}
-        kw.update(palette="lanestyle_test", settings={"palettes": {"lanestyle_test": pal}, "config": {"bridge_casing_color": test}})
+        cfg = {"bridge_casing_color": test}
+        tun = os.environ.get("LANESTYLE_TUNNEL_CASING")     # "dash,gap": a tunnel casing's two colours
+        if tun:
+            cfg.update(tunnel_palettes={"lanestyle_test": tun.split(",")}, tunnel_palette="lanestyle_test")
+        kw.update(palette="lanestyle_test", settings={"palettes": {"lanestyle_test": pal}, "config": cfg})
     return overlays, kw
