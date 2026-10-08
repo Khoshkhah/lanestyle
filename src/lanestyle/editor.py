@@ -66,4 +66,9 @@ def lane_items(roads):
     if marks_fc:
         overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
     # as the lane page: no road fill (the lanes are the surface), no roadstyle one-way chevrons or street names (lanestyle draws its own marks)
-    return overlays, {"width_m_col": "width_m", "road_fill": False, "arrows": False, "labels": False}
+    kw = {"width_m_col": "width_m", "road_fill": False, "arrows": False, "labels": False}
+    test = os.environ.get("LANESTYLE_CASING_COLOR")       # a casing colour of its own for inspecting (2026-10-10: grey lanes, grey casings)
+    if test:
+        pal = {c: {**v, "casing": test} for c, v in rs.palette_to_dict("amber").items()}
+        kw.update(palette="lanestyle_test", settings={"palettes": {"lanestyle_test": pal}, "config": {"bridge_casing_color": test}})
+    return overlays, kw
