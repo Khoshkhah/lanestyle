@@ -57,11 +57,11 @@ def _snap_ends(lines, nodes, widths=None):
     return out
 
 
-def link_roads(g, casing_m):
+def link_roads(g, casing_m, centre_m=0.0):
     """One road per **carriageway** (``edge_id`` = the smaller ``link_id`` of its links), as a GeoDataFrame in lon/lat: a street's two directions (a link and its ``reverse_link_id``) are **one road**, a one-way link is one road.
     roadstyle draws the casing of the road, around the whole carriageway, and not its fill; the lanes of both directions are the items inside it. The line is the middle of the carriageway: between the kerb-side
     lanes of the two directions (reversed to the road's direction), or, for a one-way link, between its first and last lane; it is taken at every vertex of the lanes' lines, so a bend is exact and both ends are
-    at the node. ``width_m`` is the lanes' widths together plus the casing on each side (roadstyle draws a casing as a band inside the width, so ``casing_m`` shows outside the lanes). ``g``: the lane table without
+    at the node. ``width_m`` is the lanes' widths together, plus ``centre_m`` (the centre line) for two directions, plus the casing on each side (roadstyle draws a casing as a band inside the width, so ``casing_m`` shows outside the lanes). ``g``: the lane table without
     its connectors. ``roads.attrs["road_of"]`` maps every link to its road. ``band`` is the complete band (:func:`lanestyle.levels.tags_band`)."""
     import geopandas as gpd
     import numpy as np
@@ -106,7 +106,7 @@ def link_roads(g, casing_m):
             line = ls[0]
         line = line.simplify(0.02)                      # the middle line has a vertex at every vertex of both lanes (every 10 cm on a ring): a wide, translucent stroke (roadstyle's tunnel dashes) piles up its joins into fans; 2 cm is not seen
         first = lanes_of[road].iloc[0]
-        width = float(sum(lanes_of[k]["width_m"].sum() for k in links)) + 2 * casing_m
+        width = float(sum(lanes_of[k]["width_m"].sum() for k in links)) + 2 * casing_m + (centre_m if len(links) == 2 else 0.0)
         rows.append({"edge_id": int(road), "width_m": width, **{c: first[c] for c in keep}})
         geoms.append(line)
         nodes.append((int(first["from_node_id"]), int(first["to_node_id"])))
@@ -252,6 +252,74 @@ def lane_items(g, colours, land, popup, on_road=(), level_of=None, roads=None, r
                       "color": _blend(colour, land) if tun[i] else colour})
         feats.append({"type": "Feature", "properties": props, "geometry": _polygon(p)})
     return {"type": "FeatureCollection", "features": feats}
+
+
+def _line(geom):
+    return {"type": geom.geom_type, "coordinates": [_round(p.coords) for p in geom.geoms] if geom.geom_type == "MultiLineString" else _round(geom.coords)}
+
+
+def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_road=(), level_of=None):
+    """The lanes of ``g`` (no connectors) and the lines between them, as LINE items (roadstyle's simple mode draws them in the one road layer at their road's fill):
+    ``(lanes, lines)``, two FeatureCollections. A lane is its own GMNS line, ``width_m`` wide, in its colour (``colours``; a tunnel's blended with ``land``); on a road of two
+    directions every lane is moved ``centre_m / 2`` to the right of its travel (``offset_m``), so the centre line has its own width between the directions.
+    The lines lie on the borders between neighbouring lanes of a link: dashed in metres (``lines["dash_m"]`` / ``lines["gap_m"]``, :func:`lanestyle.strokes.dashes`) between two car lanes,
+    solid next to any other lane (bus, bike); a road of two directions gets one solid centre line, ``centre_m`` wide, on lane 1's left edge of its first link. Every line stops
+    ``trim_m`` short of each end of its lane. ``road_of``: link -> road (:func:`link_roads`)."""
+    from collections import Counter
+
+    from shapely.geometry import LineString, MultiLineString
+    from shapely.ops import substring
+
+    from lanestyle import strokes
+
+    if not len(g):
+        return None, None
+    g = g.reset_index(drop=True)
+    bad = [i for i, ln in enumerate(g.geometry) if ln is None or ln.geom_type != "LineString" or ln.is_empty]
+    if bad:
+        raise ValueError(f"{len(bad)} lane(s) have no line (first: {list(g['lane_id'].iloc[bad[:5]])})")
+    links = Counter(road_of.values())
+    two = {lk for lk, rd in road_of.items() if links[rd] == 2}
+    # ponytail: right-hand traffic only (the centre is on the left of travel), as lines.py; left-hand moves the lanes the other way
+    shift = [centre_m / 2 if int(lk) in two else 0.0 for lk in g["link_id"]]
+    cols = [c for c in dict.fromkeys([*popup, "lane_id"]) if c in g]
+    on = set(on_road)
+    lane_fs = []
+    for i, row in enumerate(g[cols].to_dict("records") if cols else [{}] * len(g)):
+        colour = colours.iloc[i]
+        if level_of and level_of(g.iloc[i]) == "low":
+            colour = _blend(colour, land)
+        props = {k: (None if v is None or v != v else (v.item() if hasattr(v, "item") else v if isinstance(v, (str, int, float, bool)) else str(v))) for k, v in row.items()}
+        props.update({"edge_id": int(g["link_id"].iloc[i]), "order": FOOTPATH_ON_ROAD if i in on else LANE, "color": colour,
+                      "width_m": float(g["width_m"].iloc[i]), "offset_m": shift[i]})
+        lane_fs.append({"type": "Feature", "properties": props, "geometry": _line(g.geometry.iloc[i])})
+
+    line_fs = []
+
+    def add(link, ln, x, dashed, width, kind):
+        n = strokes.length_m(ln)
+        if n <= 2 * trim_m + 0.5:
+            return
+        ln = substring(ln, trim_m / n, 1 - trim_m / n, normalized=True)
+        if dashed:
+            parts = [LineString(f["geometry"]["coordinates"]) for f in strokes.dashes(ln, float(lines["dash_m"]), float(lines["gap_m"]), width, offset_m=x)]
+            if not parts:
+                return
+            ln, x = MultiLineString(parts), 0.0
+        line_fs.append({"type": "Feature", "geometry": _line(ln),
+                        "properties": {"edge_id": int(link), "order": LINE, "color": lines["color"], "width_m": width, "offset_m": x, "t": kind}})
+
+    use = g["use"] if "use" in g else None
+    for lk, grp in g.groupby("link_id", sort=True):
+        rows = grp.sort_values("lane_num").index.tolist() if "lane_num" in grp else grp.index.tolist()
+        if lines.get("divider", True):
+            for a, b in zip(rows, rows[1:]):
+                dashed = use is not None and use[a] == "auto" and use[b] == "auto"
+                add(lk, g.geometry[a], shift[a] + float(g["width_m"][a]) / 2, dashed, float(lines["width_m"]), "divider")
+        if lines.get("centre", True) and int(lk) in two and road_of[int(lk)] == int(lk):
+            add(lk, g.geometry[rows[0]], -float(g["width_m"][rows[0]]) / 2, False, centre_m, "centre")
+    fc = lambda fs: {"type": "FeatureCollection", "features": fs} if fs else None       # noqa: E731
+    return fc(lane_fs), fc(line_fs)
 
 
 def tag(fc, order, **extra):

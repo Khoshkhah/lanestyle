@@ -86,7 +86,7 @@ Defaults in `src/lanestyle/data/lanestyle.json`:
 | `lines.divider` / `lines.centre` | `true` | `false` = left out; `"lines": false` = none. Looks are the theme's `divider` / `centre` styles (`src/lanestyle/styles/themes/lanestyle.yaml`) |
 | `junction_trim_m` | 1 | lines stop this far short of the other roads' surface |
 | `type_label_zoom` | `null` | a zoom number draws each lane's turns (`left + thru`) along it from that zoom; off by default: the turns are in the popup (`lane_type`) |
-| `default_width_m`, `width_m_by_use`, `width_m_zoom`, `casing_m` | 3.25, `{walk: 2.0, bike: 1.5}`, 16, 0.14 | lane width where null (`width_m_by_use`: footpath, on-road bike lane); true widths from this zoom; casing inside each lane |
+| `default_width_m`, `width_m_by_use`, `width_m_zoom`, `casing_m`, `centre_line_m` | 3.25, `{walk: 2.0, bike: 1.5}`, 0, 0.14, 0.15 | lane width where null (`width_m_by_use`: footpath, on-road bike lane); true widths from this zoom (0: every zoom, never a class width); the casing on the road's two outer sides; the centre line's width between two directions |
 | `fillet_m` | 0 (off) | pave gaps narrower than 2× this between lane surfaces |
 | `frame_gap_m`, `frame_reach_m`, `frame_casing` | 2, 8, false | a footpath matched to a road is one frame with it: the gap (up to `frame_reach_m`) is filled in a tint of its colour and no outline is drawn between them; `frame_gap_m` 0 turns frames off |
 | `connectors_clickable` | false | connectors can be clicked / hovered like lanes (off: the click goes to the lane under one) |

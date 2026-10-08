@@ -22,7 +22,11 @@
     },
     "lines": {
       "divider": true,
-      "centre": true
+      "centre": true,
+      "width_m": 0.15,
+      "dash_m": 3.0,
+      "gap_m": 9.0,
+      "color": "#f2f2f2"
     },
     "zebra": {
       "stripe_m": 0.5,
@@ -54,6 +58,7 @@
       "bike": 1.5
     },
     "casing_m": 0.14,
-    "width_m_zoom": 16
+    "centre_line_m": 0.15,
+    "width_m_zoom": 0
   }
 }

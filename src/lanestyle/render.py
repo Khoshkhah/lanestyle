@@ -14,7 +14,7 @@ from lanestyle.arrows import lane_arrows
 from lanestyle.frames import frames
 from lanestyle.junctions import junction_fillets
 from lanestyle.levels import COLUMNS, by_link, link_levels, own_levels, stored_head_m
-from lanestyle.lines import _group, _level, _paired, lane_lines
+from lanestyle.lines import _group, _level, _paired
 from lanestyle.street_names import street_names
 
 _LEVEL = {"bridge": "bridge", "high": "above ground", "ground": "ground", "low": "tunnel / below ground"}
@@ -55,9 +55,11 @@ def _colour_groups(g, s):
         order = [*_GROUP_NAME, "bus", "bike"]
         rows = [(names[k], colours[k]) for k in order if k in set(key)]
         return "mode_group", colours, rows
-    present = {u: col[u] for u in _MARKED if u in set(g["use"])}
-    colours = {**present, **{u: col["auto"] for u in set(g["use"]) if u not in present}}
-    return "use", colours, [(_USE_NAME.get(u, f"{u} lanes"), c) for u, c in present.items()]
+    def key(u):          # a shared lane ("bus,bike": a bus lane bikes may use) is the first of bus, bike, walk it allows; a use of none of them is a car lane's
+        return u if u in _MARKED else next((m for m in ("bus", "bike", "walk") if m in u.split(",")), "auto")
+    keys = {u: key(u) for u in set(g["use"])}
+    present = [k for k in _MARKED if k in set(keys.values())]
+    return "use", {u: col[k] for u, k in keys.items()}, [(_USE_NAME[k], col[k]) for k in present]
 
 # click a lane: it turns `clicked`, the lanes its turns lead into `turns_into`, U-turns `uturn`. The lanes (and their connectors) are the features of the overlays "lanes" and "connectors":
 # roadstyle's `rsColor` paints one set one colour on an overlay, so the three sets are painted here, on the overlays' layers (docs/design/lanestyle_on_roadstyle_items.md).
@@ -510,7 +512,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     conn = g["connector"].fillna(False).astype(bool) if "connector" in g else None
     isconn = conn.to_numpy() if conn is not None else np.zeros(len(g), dtype=bool)
     head_m = float(s["head_m"]) if s.get("head_m") else (stored_head_m(source_db or lanes.attrs.get("source_db")) or 5.0)      # settings["lanes"]["head_m"] if given, else the stored numbers' own head length
-    roads = items.link_roads(g[~isconn], float(s["casing_m"]))
+    roads = items.link_roads(g[~isconn], float(s["casing_m"]), float(s["centre_line_m"]))
     roads[list(COLUMNS)] = link_levels(roads, source_db or lanes.attrs.get("source_db"), head_m).to_numpy()
     road_of = roads.attrs["road_of"]
     g[list(COLUMNS)] = by_link(roads, [road_of.get(int(k), k) for k in g["link_id"]])
@@ -576,7 +578,6 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     cr = crossings if crossings is not None else lanes.attrs.get("crossings")
     zebra, zlinks, zfoot = _zebra_stripes(g, cr, s["zebra"]) if s.get("zebra") else ([], [], None)
     gaps, frame, _ = frames(g, s)                # a road and its sidewalk within frame_gap_m: one frame
-    lines = lane_lines(g, s, avoid=zfoot, frame=frame)
     arrows = lane_arrows(g, turns, s.get("arrows"), avoid=zfoot)
     fillets = junction_fillets(g, s)             # connectors included: their corners are the usual gaps
     if gaps:
@@ -592,17 +593,15 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     on_mask = np.zeros(len(g), dtype=bool)
     on_mask[on_road] = True
     land = s["tunnel_body"]
-    lane_fc = items.lane_items(g[~isconn], colours[~isconn], land, popup, on_road=np.nonzero(on_mask[~isconn])[0], level_of=_level, roads=roads, road_of=road_of)
-    end_fc = items.end_caps(roads, g[~isconn], colours[~isconn], land, float(s["casing_m"]), _level)
+    lane_fc, line_fc = items.lane_strokes(g[~isconn], colours[~isconn], land, popup, road_of, float(s["centre_line_m"]), s["lines"] or {"divider": False, "centre": False},
+                                          float(s["junction_trim_m"]), on_road=np.nonzero(on_mask[~isconn])[0], level_of=_level)
     conn_fc = items.tag(items.lane_items(g[isconn], colours[isconn], land, popup, level_of=_level), items.CONNECTOR)
     names = street_names(g, arrows, s.get("names"), avoid=zfoot)
     overlays = [rs.Overlay(items.on_roads(fc, road_of), edge_col="road_id", order_col="order", style=style, label=label, popup=pop, **extra)
                 for fc, style, label, pop, extra in (
                     (conn_fc, "connector", "connectors", popup if s.get("connectors_clickable") else [], {"color_col": "color"}),
-                    (end_fc, "connector", "road ends", [], {"color_col": "color"}),
-                    (lane_fc, "lane", "lanes", popup, {"color_col": "color"}),
-                    (items.tag(items.only(lines, t="divider"), items.LINE), "divider", "dividers", [], {}),
-                    (items.tag(items.only(lines, t="centre"), items.LINE), "centre", "centre lines", [], {}),
+                    (lane_fc, None, "lanes", popup, {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"}),
+                    (line_fc, None, "lane lines", [], {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"}),
                     (items.stripes(zebra, zlinks), "zebra", "zebra crossings", [], {}),
                     (items.tag(arrows, items.ARROW), "lane_arrow", "lane arrows", [], {}),
                     (items.tag(names, items.NAME), "street_name", "street names", [], {})) if fc]

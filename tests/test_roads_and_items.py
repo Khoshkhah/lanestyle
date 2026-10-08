@@ -65,9 +65,10 @@ def test_the_page_draws_roads_without_fill_and_the_items_by_road_id(tmp_path):
     lanes, turns, g = _lanes(tmp_path)
     html = ls.render_lanes(lanes, turns).html
     style = _style(html)
-    assert any(lyr["id"].startswith("roads-casing") for lyr in style["layers"])
-    fills = [lyr for lyr in style["layers"] if lyr["id"].startswith("roads-fill") and not lyr["id"].endswith("-pat")]
-    assert fills and all(lyr["paint"].get("line-opacity") == 0 for lyr in fills)         # the road's own fill is invisible: the lanes are the fill
+    assert any(lyr["id"] == "roads-simple" for lyr in style["layers"])                  # roadstyle's simple mode: one road layer, casings and items in one order
+    pieces = style["sources"]["simple"]["data"]["features"]
+    lines = [f for f in pieces if f["properties"].get("__rs_k") == 5]                      # the lanes and the lane lines are items in it, each its own width in metres
+    assert len(lines) >= len(g) and {f["properties"]["__rs_ic"] for f in lines} >= {"#f2f2f2"}
     roads = {str(f["properties"]["edge_id"]) for f in style["sources"]["roads"]["data"]["features"]}
     overlays = json.JSONDecoder().raw_decode(html.split("const OVERLAYS = ", 1)[1])[0]
     lanes_ov = next(o for o in overlays if o["label"] == "lanes")
@@ -200,3 +201,25 @@ def test_a_lane_click_reaches_the_street_view_panel(tmp_path):
     lanes, turns, _ = _lanes(tmp_path)
     assert "Number(d.properties.road_id)" in ls.render_lanes(lanes, turns).html
     assert "Number(d.properties.road_id)" in ls.render_lanes(lanes, turns, street_view=True).html
+
+
+def test_lanes_and_lines_are_line_items_with_the_centre_line_between_the_directions():
+    """Step 2b (Boulevard Charles III's layout): 2 car lanes one way, a bus/bike lane the other. A lane is its own line, its width; both directions move half the centre
+    line to the right, the road is the lanes + the centre line + the casing; dashed (metre pieces) between the car lanes, a solid centre line on lane 1's left edge."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    m, kx = 1 / 111320, 1 / (111320 * 0.7225)                     # degrees per metre at 43.73 N
+    line = lambda x0, x1, y: LineString([(7.4 + x0 * kx, 43.73 + y * m), (7.4 + x1 * kx, 43.73 + y * m)])       # noqa: E731
+    g = gpd.GeoDataFrame({"link_id": [1, 1, 2], "reverse_link_id": [2, 2, 1], "lane_id": ["1_1", "1_2", "2_1"], "lane_num": [1, 2, 1], "width_m": [3.25] * 3,
+                          "from_node_id": [10, 10, 20], "to_node_id": [20, 20, 10], "highway": ["primary"] * 3, "use": ["auto", "auto", "bus,bike"]},
+                         geometry=[line(0, 100, -1.625), line(0, 100, -4.875), line(100, 0, 1.625)], crs=4326)
+    roads = items.link_roads(g, 0.14, 0.15)
+    assert abs(roads["width_m"].iloc[0] - (3 * 3.25 + 0.15 + 0.28)) < 1e-9
+    lanes, lines = items.lane_strokes(g, g["use"].map(lambda u: "#aaa"), "#eee", ["lane_id"], roads.attrs["road_of"], 0.15,
+                                      {"divider": True, "centre": True, "width_m": 0.15, "dash_m": 3, "gap_m": 9, "color": "#f2f2f2"}, 1.0)
+    assert [(f["geometry"]["type"], f["properties"]["width_m"], f["properties"]["offset_m"]) for f in lanes["features"]] == [("LineString", 3.25, 0.075)] * 3
+    by = {f["properties"]["t"]: f for f in lines["features"]}
+    assert set(by) == {"divider", "centre"} and all(f["properties"]["order"] > items.LANE for f in lines["features"])
+    assert by["divider"]["geometry"]["type"] == "MultiLineString" and len(by["divider"]["geometry"]["coordinates"]) == 8      # 98 m: a 3 m dash every 12 m
+    assert by["centre"]["properties"]["width_m"] == 0.15 and by["centre"]["properties"]["offset_m"] == -1.625 and by["centre"]["properties"]["edge_id"] == 1
