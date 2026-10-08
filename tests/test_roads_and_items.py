@@ -251,7 +251,7 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     links = sorted({str(k) for k in lanes[~lanes["connector"].fillna(False).astype(bool)]["link_id"]} if "connector" in lanes else {str(k) for k in lanes["link_id"]})
     drawn = gpd.GeoDataFrame({"edge": links[1:], "road": links[1:]}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
     overlays, kw = editor.lane_items(drawn)
-    assert kw == {"width_m_col": "width_m", "road_fill": False, "arrows": False, "labels": False} and drawn["width_m"].notna().all()
+    assert kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "road_fill": False, "arrows": False, "labels": False} and drawn["width_m"].notna().all()
     lanes_ov, lines_ov = overlays[:2]
     assert [o.label for o in overlays[2:]] in ([], ["lane marks"])           # the marks, as on the lane page
     feats = lanes_ov.data["features"]
