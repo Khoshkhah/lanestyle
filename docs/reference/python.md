@@ -19,7 +19,7 @@ Draw a [lane table](../guides/lane-table.md) as one roadstyle map and return roa
 | `settings` | roadstyle settings, plus a `"lanes"` key for lanestyle's own ([Settings](settings.md)) |
 | `**kwargs` | anything `roadstyle.render_edges` takes: `basemap`, `boundary`, `overlays`, `name`, `view_3d`, … |
 
-It calls `roadstyle.render_edges` with `width_m_col="width_m"`, `width_m_zoom`, `casing_m` and the
+It calls `roadstyle.render_edges` with `width_m_col="width_m"`, `width_m_zoom`, `casing_m`, `casing_min_px` (1: the casing is never under a pixel) and the
 popup columns, then appends its own scripts: the lane lines, the mode-group rows in the Roads
 box, the click script and, when asked for, the type labels.
 

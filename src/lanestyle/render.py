@@ -625,7 +625,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     rs_settings = _merge(_merge(lane_theme(), _ROADSTYLE), {k: v for k, v in (settings or {}).items() if k != "lanes"})
     m = draw(
         roads, palette=palette, road_fill=False, edge_id_col="edge_id", directed_col="directed", overlays=overlays,
-        width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=float(s["casing_m"]), cap_start_col="cap0", cap_end_col="cap1",
+        width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=float(s["casing_m"]), casing_min_px=float(s["casing_min_px"]), cap_start_col="cap0", cap_end_col="cap1",
         casing_level_col="casing_level", fill_level_col="fill_level", casing_start_col="casing_start", casing_end_col="casing_end", head_m=head_m,
         arrows=False, labels=True,                 # the lane arrows are lanestyle's own items; the street names are roadstyle's, one per road (its ``name``)
         road_popup=[c for c in ("name", "highway", "edge_ref", "osm_id") if c in roads.columns],

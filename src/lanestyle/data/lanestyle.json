@@ -59,6 +59,7 @@
       "bike": 1.5
     },
     "casing_m": 0.14,
+    "casing_min_px": 1,
     "centre_line_m": 0.15,
     "width_m_zoom": 0
   }

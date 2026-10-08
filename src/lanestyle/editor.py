@@ -74,7 +74,7 @@ def lane_items(roads):
     # as the lane page: no road fill (the lanes are the surface), no roadstyle one-way chevrons or street names (lanestyle draws its own marks)
     from lanestyle.render import lane_settings
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing, as the lane page
-    kw = {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": float(lane_settings()["casing_m"]), "road_fill": False, "arrows": False, "labels": False}
+    kw = {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": float(lane_settings()["casing_m"]), "casing_min_px": float(lane_settings()["casing_min_px"]), "road_fill": False, "arrows": False, "labels": False}
     test = os.environ.get("LANESTYLE_CASING_COLOR")       # a casing colour of its own for inspecting (2026-10-10: grey lanes, grey casings)
     if test:
         pal = {c: {**v, "casing": test} for c, v in rs.palette_to_dict("amber").items()}
