@@ -305,8 +305,8 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
     ``(lanes, lines)``, two FeatureCollections. A lane is its own GMNS line, ``width_m`` wide, in its colour (``colours``; a tunnel's blended with ``land``); on a road of two
     directions every lane is moved ``centre_m / 2`` to the right of its travel (``offset_m``), so the centre line has its own width between the directions.
     The lines lie on the borders between neighbouring lanes of a link: dashed in metres (``lines["dash_m"]`` / ``lines["gap_m"]``, :func:`lanestyle.strokes.dashes`) between two car lanes,
-    solid next to any other lane (bus, bike); a road of two directions gets one solid centre line, ``centre_m`` wide, on lane 1's left edge of its first link. Every line stops
-    ``trim_m`` short of each end of its lane. ``road_of``: link -> road (:func:`link_roads`)."""
+    solid next to any other lane (bus, bike); a road of two directions gets one solid centre line, ``centre_m`` wide, on lane 1's left edge of its first link. A line stops
+    ``trim_m`` short of a junction end of its lane and runs on through a node where its road goes on. ``road_of``: link -> road (:func:`link_roads`)."""
     from collections import Counter
 
     import geopandas as gpd
@@ -346,11 +346,20 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
 
     line_fs = []
 
-    def add(link, ln, x, dashed, width, kind):
+    ext = ext or {}
+
+    def add(link, i, x, dashed, width, kind):
+        # a line stops trim_m short of a REAL junction only; where its road goes on (a node in ``ext``) it runs on with the lanes, drawn line
+        # included, so the lines of one street do not break at every node (2026-10-10: "a lot of breaks")
+        rd = road_of.get(int(link))
+        t0 = 0.0 if (rd, int(g["from_node_id"].iloc[i])) in ext else trim_m
+        t1 = 0.0 if (rd, int(g["to_node_id"].iloc[i])) in ext else trim_m
+        ln = drawn.iloc[i]
         n = strokes.length_m(ln)
-        if n <= 2 * trim_m + 0.5:
+        if n <= t0 + t1 + 0.2:
             return
-        ln = substring(ln, trim_m / n, 1 - trim_m / n, normalized=True)
+        if t0 or t1:
+            ln = substring(ln, t0 / n, 1 - t1 / n, normalized=True)
         if dashed:
             parts = [LineString(f["geometry"]["coordinates"]) for f in strokes.dashes(ln, float(lines["dash_m"]), float(lines["gap_m"]), width, offset_m=x)]
             if not parts:
@@ -365,9 +374,9 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
         if lines.get("divider", True):
             for a, b in zip(rows, rows[1:]):
                 dashed = use is not None and use[a] == "auto" and use[b] == "auto"
-                add(lk, g.geometry[a], shift[a] + float(g["width_m"][a]) / 2, dashed, float(lines["width_m"]), "divider")
+                add(lk, a, shift[a] + float(g["width_m"][a]) / 2, dashed, float(lines["width_m"]), "divider")
         if lines.get("centre", True) and int(lk) in two and road_of[int(lk)] == int(lk):
-            add(lk, g.geometry[rows[0]], -float(g["width_m"][rows[0]]) / 2, False, centre_m, "centre")
+            add(lk, rows[0], -float(g["width_m"][rows[0]]) / 2, False, centre_m, "centre")
     fc = lambda fs: {"type": "FeatureCollection", "features": fs} if fs else None       # noqa: E731
     return fc(lane_fs), fc(line_fs)
 
