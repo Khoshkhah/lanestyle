@@ -45,6 +45,7 @@
     "head_m": 25,
     "fillet_m": 0,
     "frame_gap_m": 2.0,
+    "connectors": true,
     "connectors_clickable": false,
     "tunnel_body": "#f6f4ee",
     "crossing_max_m": 10,

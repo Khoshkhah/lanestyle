@@ -595,7 +595,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     lane_fc, line_fc = items.lane_strokes(g[~isconn], colours[~isconn], land, popup, road_of, float(s["centre_line_m"]), s["lines"] or {"divider": False, "centre": False},
                                           float(s["junction_trim_m"]), on_road=np.nonzero(on_mask[~isconn])[0], level_of=_level,
                                           ext=roads.attrs["ext"])
-    conn_fc = items.connector_strokes(g[isconn], colours[isconn], land, popup, dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
+    conn_fc = (items.connector_strokes(g[isconn], colours[isconn], land, popup, dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
+               if s.get("connectors", True) else None)      # lanestyle.json "connectors": false leaves them off (2026-10-10: roads first, then junctions)
     overlays = [rs.Overlay(items.on_roads(fc, road_of), edge_col="road_id", order_col="order", style=style, label=label, popup=pop, **extra)
                 for fc, style, label, pop, extra in (
                     (conn_fc, None, "connectors", popup if s.get("connectors_clickable") else [], {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"}),
