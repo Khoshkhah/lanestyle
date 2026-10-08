@@ -234,3 +234,28 @@ def test_an_outline_ends_flat_at_a_junction_and_round_where_its_road_goes_on():
     assert cap0[:2] == [True, None] and cap1[:2] == [None, True]
     assert abs(ext[(1, 20)] - 4.0) < 1e-9 and abs(ext[(2, 20)] - 4.0) < 1e-9 and (2, 30) not in ext      # half the width x tan(45 degrees)
     assert items._extend(LineString([(0, 0), (10, 0)]), 2.0, 0.0).coords[0] == (-2.0, 0.0)
+
+
+def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path, monkeypatch, capsys):
+    """lanestyle.editor.lane_items (roadstyle's level editor ``--items``): the lanes and lines of the GMNS file as items of the editor's edges (a link is a duckOSM
+    edge: ``road_id`` = its ``edge_id``), no connectors, the edges at their lanes' width; a link that is no edge of the editor is left out and said."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle import editor
+    gmns, src = _dbs(tmp_path)
+    monkeypatch.setenv("LANESTYLE_GMNS", str(gmns))
+    monkeypatch.setenv("LANESTYLE_SOURCE_DB", str(src))
+    editor._strokes.cache_clear()
+    lanes, _ = ls.from_gmns(gmns, source_db=src)
+    links = sorted({str(k) for k in lanes[~lanes["connector"].fillna(False).astype(bool)]["link_id"]} if "connector" in lanes else {str(k) for k in lanes["link_id"]})
+    drawn = gpd.GeoDataFrame({"edge": links[1:], "road": links[1:]}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
+    overlays, kw = editor.lane_items(drawn)
+    assert kw == {"width_m_col": "width_m"} and drawn["width_m"].notna().all()
+    lanes_ov, lines_ov = overlays
+    feats = lanes_ov.data["features"]
+    assert feats and all(f["properties"]["road_id"] == str(f["properties"]["edge_id"]) and f["properties"]["road_id"] in links[1:] for f in feats)
+    assert {f["properties"]["road_id"] for f in feats} == set(links[1:]) and lanes_ov.select == "item" and lanes_ov.edge_col == "road_id"
+    assert all(f["properties"]["road_id"] in links[1:] for f in lines_ov.data["features"])
+    assert "left out" in capsys.readouterr().out
+    editor._strokes.cache_clear()
