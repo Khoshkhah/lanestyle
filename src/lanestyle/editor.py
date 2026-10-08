@@ -19,11 +19,11 @@ def _strokes(gmns, source_db):
     from lanestyle import items
     from lanestyle.lines import _level
     from lanestyle.arrows import mark_strokes
-    from lanestyle.render import _colour_groups, _roads_only, _widths, lane_settings
+    from lanestyle.render import _colour_groups, _roads_only, _widths, full_lanes, lane_settings
 
     s = lane_settings()
     lanes, turns = ls.from_gmns(gmns, source_db=source_db)
-    g = _roads_only(lanes).copy()
+    g = full_lanes(_roads_only(lanes), {**s, "connectors": False}).copy()       # the editor shows no connectors: the lanes to their nodes
     g["use"] = g["use"].fillna("auto") if "use" in g else "auto"
     g["width_m"] = _widths(g, s)
     if "connector" in g:                                  # the editor shows the roads: no connectors

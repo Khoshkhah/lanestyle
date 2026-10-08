@@ -453,6 +453,23 @@ def _zebra_stripes(g, cr, st):
     return [[[round(x, 7), round(y, 7)] for x, y in p.exterior.coords] for p in back], links, footprint
 
 
+def full_lanes(g, s):
+    """With connectors off (lanestyle.json "connectors": false), each lane on its FULL line to its nodes (GMNS ``geom_full``, duckOSM 2026-10-10)
+    instead of the line cut back for the connectors, so a junction shows no gap where a connector would be. Unchanged with connectors on, or
+    when the GMNS file has no full lines (an older duckOSM: then the gaps stay, and this says so)."""
+    if s.get("connectors", True):
+        return g
+    if "full_geometry" not in g:
+        import warnings
+        warnings.warn("lanestyle: connectors are off but this GMNS file has no lane.geom_full (duckOSM before 2026-10-10): "
+                      "the lanes stop short of the junctions; rebuild the GMNS file", stacklevel=2)
+        return g
+    g = g.copy()
+    has = g["full_geometry"].notna()
+    g.loc[has, "geometry"] = g.loc[has, "full_geometry"]
+    return g
+
+
 def _roads_only(g):
     """The lanes of links that have a road class: a link with none is no road (a ferry in the walking network, a way with no ``highway`` tag)."""
     return g[g["highway"].notna()] if "highway" in g and g["highway"].isna().any() else g
@@ -479,7 +496,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
 
     s = lane_settings(settings)
     g = lanes.copy()
-    g = _roads_only(g)
+    g = full_lanes(_roads_only(g), s)
     g["use"] = g["use"].fillna("auto") if "use" in g else "auto"
     g["width_m"] = _widths(g, s)
     # every lane is coloured by its mode group (car, bus, bike, walk), not by its road's class; a use that has no
