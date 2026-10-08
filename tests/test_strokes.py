@@ -40,7 +40,7 @@ def test_place_straight_and_curved():
     east = LineString([(7.42, 43.73), (7.43, 43.73)])
     f = strokes.place(shp, east, 100, 3.25)
     xs = [x for g in f for x, _ in _metres(g)]
-    assert len(f) == len(shp) and all(g["properties"]["width_m"] == strokes.STROKE for g in f) and abs((min(xs) + max(xs)) / 2 - 100) < 0.5
+    assert len(f) == len(shp) and all(g["properties"]["width_m"] in (strokes.SHAFT, strokes.FILL) for g in f) and abs((min(xs) + max(xs)) / 2 - 100) < 0.5
     # a quarter circle of radius 50 m: every stroke point is within the lane of the curve
     r = 50
     arc = LineString([(7.42 + (r * math.sin(t)) / (111320 * math.cos(math.radians(43.73))), 43.73 + r * (1 - math.cos(t)) / 110540) for t in [i * math.pi / 2 / 40 for i in range(41)]])

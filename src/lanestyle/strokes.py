@@ -14,36 +14,56 @@ STROKE = 0.4          # painted line width, m (2026-10-09: 0.3 too thin)
 LENGTH = 6.0          # arrow length, m (2026-10-09: 4 m too small)
 
 
-def _head(tip, ang, k):
-    """A chevron of two short strokes whose point is `tip`, pointing at angle `ang` (0 = forward, 90 = left)."""
-    a, size, spread = math.radians(ang), 0.9 * k, math.radians(40)
-    arm = lambda s: (tip[0] - size * math.cos(a + s), tip[1] - size * math.sin(a + s))
-    return [arm(spread), tip, arm(-spread)]
+SHAFT = 0.45         # an arrow's shaft and branches, m (2026-10-09: thicker, like painted arrows)
+FILL = 0.1           # the thin strokes that fill an arrow's head solid, m
+
+
+def _head(tip, ang, k, hl=1.5, hb=0.75):
+    """A SOLID triangular head with its point at `tip`, pointing at angle `ang` (0 = forward, 90 = left): a fan of thin strokes from
+    the base to the tip, close enough to read as one painted triangle (a single stroke width per item, so no polygon is needed)."""
+    a, hl, hb = math.radians(ang), hl * k, hb * k                      # head length, half its base
+    ux, uy, nx, ny = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
+    bx, by = tip[0] - hl * ux, tip[1] - hl * uy
+    n = max(4, int(2 * hb / (FILL * 0.6)))
+    return [[(bx + nx * hb * (2 * i / n - 1), by + ny * hb * (2 * i / n - 1)), tip] for i in range(n + 1)]
+
+
+def _bend(p0, ang0, ang1, r, steps=8):
+    """A smooth turn: an arc of radius `r` starting at `p0` heading `ang0` and ending heading `ang1` (degrees, left positive)."""
+    a0, a1 = math.radians(ang0), math.radians(ang1)
+    s = 1 if a1 > a0 else -1
+    cx, cy = p0[0] - s * r * math.sin(a0), p0[1] + s * r * math.cos(a0)          # the centre, on the inside of the turn
+    return [(cx + s * r * math.sin(a0 + (a1 - a0) * i / steps), cy - s * r * math.cos(a0 + (a1 - a0) * i / steps)) for i in range(steps + 1)]
 
 
 def _arrow(moves, W):
+    """A painted lane arrow: a thick shaft, smooth bends into the turns, solid heads; (polylines, width) pairs: the shaft and branches at
+    SHAFT, the heads' fill at FILL."""
     k, L = min(1.0, W / 3.25), LENGTH
-    vt = W / 2 - 0.3 * k - 0.05                     # the side tip, inside the lane edge
-    lines = []
+    head = 1.5 * k
+    thick, fill = [], []
     if moves == {"uturn"}:
-        r = min(0.3 * W, W / 2 - 0.9 * k * math.sin(math.radians(40)) - STROKE / 2 - 0.05)   # the hook and its head inside the lane
-        arc = [(0.8 + r * math.sin(t), r * -math.cos(t)) for t in [math.pi * i / 12 for i in range(13)]]
-        lines = [[(-L / 2, -r)] + arc + [(-0.3, r)], _head((-0.3, r), 180, k)]
-        return [(p, STROKE) for p in lines]
-    if moves in ({"left"}, {"right"}):
-        s = 1 if moves == {"left"} else -1
-        return [(p, STROKE) for p in ([(-L / 2, 0), (0.3, 0), (0.3, s * vt)], _head((0.3, s * vt), 90 * s, k))]
-    if "thru" in moves:
-        lines += [[(-L / 2, 0), (L / 2, 0)], _head((L / 2, 0), 0, k)]
-    else:                                           # left + right: the stem ends at the fork
-        lines += [[(-L / 2, 0), (-0.4, 0)]]
-    for s, on in ((1, "left" in moves), (-1, "right" in moves)):
-        if on:
-            u0 = -0.9 if "thru" in moves else -0.4
-            d = vt - 0.3 * k                         # a 45 degree branch from the shaft
-            tip = (u0 + d, s * d)
-            lines += [[(u0, 0), tip], _head(tip, 45 * s, k)]
-    return [(p, STROKE) for p in lines]
+        r = min(0.3 * W, W / 2 - 0.75 * k - 0.15)
+        hook = [(-L / 2 + head, -r), (0.6, -r)] + _bend((0.6, -r), 0, 180, r, 12)[1:] + [(-0.6 + head, r)]
+        thick.append(hook)
+        fill += _head((-0.6, r), 180, k)
+    else:
+        if moves in ({"left"}, {"right"}):         # a single turn: the shaft runs on, then bends into the turn
+            thick.append([(-L / 2, 0), (0.2, 0)])
+        elif "thru" in moves:
+            thick.append([(-L / 2, 0), (L / 2 - head, 0)])
+            fill += _head((L / 2, 0), 0, k)
+        else:                                       # left + right: the stem ends at the fork
+            thick.append([(-L / 2, 0), (-0.4, 0)])
+        for sgn, on in ((1, "left" in moves), (-1, "right" in moves)):
+            if on:                                  # a bend to 45 degrees, a short straight run, a smaller head: all inside the lane
+                u0 = 0.0 if moves in ({"left"}, {"right"}) else -1.2
+                arc = _bend((u0, 0), 0, 45 * sgn, 1.0 * k)
+                c45 = math.cos(math.radians(45))
+                end = (arc[-1][0] + 0.5 * k * c45, arc[-1][1] + sgn * 0.5 * k * c45)
+                thick.append(arc + [end])
+                fill += _head((end[0] + 1.0 * k * c45, end[1] + sgn * 1.0 * k * c45), 45 * sgn, k, hl=1.0, hb=0.5)
+    return [(p, SHAFT) for p in thick] + [(p, FILL) for p in fill]
 
 
 # letters in a unit box, x right and y up as the driver reads them
