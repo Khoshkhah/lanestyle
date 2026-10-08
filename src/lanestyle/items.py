@@ -68,6 +68,8 @@ def link_roads(g, casing_m, centre_m=0.0):
     import pandas as pd
     from shapely.geometry import LineString, Point
 
+    import math
+
     from lanestyle.levels import tags_band
 
     u = g.to_crs(g.estimate_utm_crs())
@@ -83,12 +85,24 @@ def link_roads(g, casing_m, centre_m=0.0):
     def lines_of(link):
         return [ln for ln in lanes_of[link].geometry if ln is not None and ln.geom_type == "LineString" and ln.length > 0]
 
-    def middle(a, b):
-        """The line halfway between ``a`` and ``b`` (the same direction), at every vertex of both."""
+    def widths_of(link):
+        return [float(w) for ln, w in zip(lanes_of[link].geometry, lanes_of[link]["width_m"], strict=True)
+                if ln is not None and ln.geom_type == "LineString" and ln.length > 0]
+
+    def middle(a, b, wa=0.0, wb=0.0):
+        """The line halfway between the outer edges of lane ``a`` (``wa`` wide) and lane ``b`` (``wb``; the same direction), at every vertex of both:
+        their centres' middle moved ``(wb - wa) / 4`` toward ``b`` (2026-10-10: kerb lanes of different widths, a car lane and a bike lane, put the
+        middle of their centres 0.44 m off the carriageway's middle and the narrow casing under the wider side's lane)."""
         fr = sorted({0.0, 1.0, *(a.project(Point(c), normalized=True) for c in a.coords),
                      *(b.project(Point(c), normalized=True) for c in b.coords)})
         pa, pb = [a.interpolate(x, normalized=True) for x in fr], [b.interpolate(x, normalized=True) for x in fr]
-        pts = [((p.x + q.x) / 2, (p.y + q.y) / 2) for p, q in zip(pa, pb, strict=True)]
+        k = (wb - wa) / 4.0
+
+        def mid(p, q):
+            d = math.hypot(q.x - p.x, q.y - p.y)
+            ux, uy = ((q.x - p.x) / d, (q.y - p.y) / d) if d > 1e-9 else (0.0, 0.0)
+            return ((p.x + q.x) / 2 + ux * k, (p.y + q.y) / 2 + uy * k)
+        pts = [mid(p, q) for p, q in zip(pa, pb, strict=True)]
         return LineString([c for k, c in enumerate(pts) if k == 0 or c != pts[k - 1]])
 
     rows, geoms, nodes = [], [], []
@@ -99,9 +113,9 @@ def link_roads(g, casing_m, centre_m=0.0):
             continue
         if len(links) == 2 and lines_of(links[1]):
             other = lines_of(links[1])[-1]
-            line = middle(ls[-1], LineString(list(other.coords)[::-1]))            # the kerb lane of each direction (its last lane), the other one reversed: for 1 + 2 lanes the inner lanes' middle is half a lane off the road
+            line = middle(ls[-1], LineString(list(other.coords)[::-1]), widths_of(road)[-1], widths_of(links[1])[-1])            # the kerb lane of each direction (its last lane), the other one reversed: for 1 + 2 lanes the inner lanes' middle is half a lane off the road
         elif len(ls) > 1:
-            line = middle(ls[0], ls[-1])
+            line = middle(ls[0], ls[-1], widths_of(road)[0], widths_of(road)[-1])
         else:
             line = ls[0]
         line = line.simplify(0.02)                      # the middle line has a vertex at every vertex of both lanes (every 10 cm on a ring): a wide, translucent stroke (roadstyle's tunnel dashes) piles up its joins into fans; 2 cm is not seen

@@ -261,3 +261,19 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     # the casing's line is the lane page's (the middle of the carriageway), not the editor's: every edge left its dummy line
     assert all(g.coords[0] != (0.0, 0.0) for g in drawn.geometry)
     editor._strokes.cache_clear()
+
+
+def test_the_road_line_is_the_middle_of_the_carriageway_whatever_its_kerb_lanes_widths():
+    """A one-way link with a 1.5 m bike lane (lane -1, left) and a 3.25 m car lane: the road line (the casing's) is the middle of the outer
+    edges (+1.5 and -3.25 m: -0.875 m), not the middle of the two lane centres (-0.44 m; 2026-10-10: the casing hidden on one side)."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    m = 1 / 111320.0
+    y0 = 43.73
+    lane = lambda dy: LineString([(7.42, y0 + dy * m), (7.4205, y0 + dy * m)])      # east; + dy = north = left of travel
+    g = gpd.GeoDataFrame({"link_id": [1, 1], "lane_num": [-1, 1], "width_m": [1.5, 3.25], "from_node_id": [10, 10], "to_node_id": [20, 20]},
+                         geometry=[lane(0.75), lane(-1.625)], crs=4326)
+    roads = items.link_roads(g, 0.14, 0.15)
+    ys = [(c[1] - y0) / m for c in roads.geometry.iloc[0].coords]
+    assert abs(sum(ys) / len(ys) - (-0.875)) < 0.05          # edges +1.5 and -3.25: their middle
