@@ -10,13 +10,13 @@ from pyproj import Transformer
 from shapely.geometry import LineString
 
 ARROWS = ("thru", "left", "right", "uturn", "left+thru", "thru+right", "left+right", "left+thru+right")
-STROKE = 0.3          # painted line width, m
-LENGTH = 4.0          # arrow length, m
+STROKE = 0.4          # painted line width, m (2026-10-09: 0.3 too thin)
+LENGTH = 6.0          # arrow length, m (2026-10-09: 4 m too small)
 
 
 def _head(tip, ang, k):
     """A chevron of two short strokes whose point is `tip`, pointing at angle `ang` (0 = forward, 90 = left)."""
-    a, size, spread = math.radians(ang), 0.55 * k, math.radians(40)
+    a, size, spread = math.radians(ang), 0.9 * k, math.radians(40)
     arm = lambda s: (tip[0] - size * math.cos(a + s), tip[1] - size * math.sin(a + s))
     return [arm(spread), tip, arm(-spread)]
 
@@ -26,7 +26,7 @@ def _arrow(moves, W):
     vt = W / 2 - 0.3 * k - 0.05                     # the side tip, inside the lane edge
     lines = []
     if moves == {"uturn"}:
-        r = 0.3 * W
+        r = min(0.3 * W, W / 2 - 0.9 * k * math.sin(math.radians(40)) - STROKE / 2 - 0.05)   # the hook and its head inside the lane
         arc = [(0.8 + r * math.sin(t), r * -math.cos(t)) for t in [math.pi * i / 12 for i in range(13)]]
         lines = [[(-L / 2, -r)] + arc + [(-0.3, r)], _head((-0.3, r), 180, k)]
         return [(p, STROKE) for p in lines]
