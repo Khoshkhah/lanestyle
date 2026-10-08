@@ -122,7 +122,7 @@ def _mark_name(kinds):
 def mark_strokes(lanes, turns, s, shifts, colour="#ffffff"):
     """The painted marks of each lane as LINE items (2026-10-10, docs/design/lane_arrows.md; strokes.py): a car lane's arrow (its moves, from
     ``turns``) ``end_m`` before its end, then a plain arrow back along it every ``repeat_m``; a bus lane's BUS and a bike lane's bike from 15 m,
-    then every ``repeat_m``. Each mark lies on its lane's own line, shifted as the lane (``shifts``, :func:`lanestyle.items.lane_shifts`), so it
+    then every ``repeat_m`` (a shared ``bus,bike`` lane: BUS, its bike 12 m after). Each mark lies on its lane's own line, shifted as the lane (``shifts``, :func:`lanestyle.items.lane_shifts`), so it
     is exactly where the lane is filled; one item per lane and stroke width (a MultiLineString; ``edge_id`` its link, ``order`` ARROW).
     ``s``: ``lanes.arrows``. None when nothing is marked."""
     from shapely.geometry import LineString
@@ -148,6 +148,8 @@ def mark_strokes(lanes, turns, s, shifts, colour="#ffffff"):
         if use.startswith("bus") or use == "bike":
             name = "bus" if use.startswith("bus") else "bike"
             at = [(d, name) for d in strokes.positions(n, 15, every or 60, back)]
+            if name == "bus" and "bike" in use.split(","):        # a bus lane bikes share: its bike 12 m after each BUS, where it fits (2026-10-10)
+                at += [(d + 12, "bike") for d, _ in list(at) if d + 12 + strokes.LENGTH / 2 <= n]
         else:
             if n < strokes.LENGTH + 2:
                 continue

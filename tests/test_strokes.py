@@ -66,3 +66,19 @@ def test_offset_is_to_the_right_like_roadstyle():
     east = LineString([(7.42, 43.73), (7.43, 43.73)])
     f = strokes.place([([(-0.5, 0), (0.5, 0)], 0.2)], east, 100, offset_m=2.0)
     assert all(lat < 43.73 for _, lat in f[0]["geometry"]["coordinates"])          # south of an eastward line = its right
+
+
+def test_a_shared_bus_and_bike_lane_has_both_marks():
+    """A ``bus,bike`` lane (2026-10-10, Boulevard des Moulins' contraflow lane) gets the bike 12 m after each BUS; a bus-only lane gets BUS alone."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.arrows import mark_strokes
+
+    def parts(use):
+        g = gpd.GeoDataFrame({"link_id": [1], "lane_id": ["1_1"], "use": [use], "width_m": [3.25]},
+                             geometry=[LineString([(7.42, 43.73), (7.4215, 43.73)])], crs=4326)        # about 120 m
+        fc = mark_strokes(g, None, {"end_m": 10, "repeat_m": 60}, [0.0])
+        return sum(len(f["geometry"]["coordinates"]) for f in fc["features"])
+    bike_only = parts("bike")
+    assert parts("bus,bike") == parts("bus") + bike_only
