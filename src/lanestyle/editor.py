@@ -18,10 +18,11 @@ def _strokes(gmns, source_db):
     import lanestyle as ls
     from lanestyle import items
     from lanestyle.lines import _level
+    from lanestyle.arrows import mark_strokes
     from lanestyle.render import _colour_groups, _roads_only, _widths, lane_settings
 
     s = lane_settings()
-    lanes, _ = ls.from_gmns(gmns, source_db=source_db)
+    lanes, turns = ls.from_gmns(gmns, source_db=source_db)
     g = _roads_only(lanes).copy()
     g["use"] = g["use"].fillna("auto") if "use" in g else "auto"
     g["width_m"] = _widths(g, s)
@@ -33,11 +34,11 @@ def _strokes(gmns, source_db):
     lane_fc, line_fc = items.lane_strokes(g, g[colour_col].map(palette_colors), s["tunnel_body"], ["name", "lane_id", "lane_num", "use", "width_m", "link_id"],
                                           road_of, float(s["centre_line_m"]), s["lines"] or {"divider": False, "centre": False},
                                           float(s["junction_trim_m"]), level_of=_level, ext=roads.attrs["ext"])
-    n = Counter(road_of.values())
-    two = {lk for lk, rd in road_of.items() if n[rd] == 2}
+    marks_fc = mark_strokes(g, turns, s.get("arrows"), items.lane_shifts(g.reset_index(drop=True), road_of, float(s["centre_line_m"])))   # as the lane page
+    two = items.two_way_links(road_of)
     width = {str(lk): float(w) + 2 * float(s["casing_m"]) + (float(s["centre_line_m"]) / 2 if int(lk) in two else 0.0)
              for lk, w in g.groupby("link_id")["width_m"].sum().items()}
-    return lane_fc, line_fc, width
+    return lane_fc, line_fc, marks_fc, width
 
 
 def lane_items(roads):
@@ -48,7 +49,7 @@ def lane_items(roads):
     gmns, src = os.environ.get("LANESTYLE_GMNS"), os.environ.get("LANESTYLE_SOURCE_DB")
     if not gmns:
         raise ValueError("lanestyle.editor.lane_items: set LANESTYLE_GMNS to the GMNS .duckdb (and LANESTYLE_SOURCE_DB to its duckOSM file)")
-    lane_fc, line_fc, width = _strokes(gmns, src)
+    lane_fc, line_fc, marks_fc, width = _strokes(gmns, src)
     edges = set(roads["edge"].astype(str))
 
     def on_edges(fc):
@@ -62,4 +63,6 @@ def lane_items(roads):
     m = dict(edge_col="road_id", order_col="order", color_col="color", width_m_col="width_m", offset_m_col="offset_m")
     overlays = [rs.Overlay(on_edges(lane_fc), label="lanes", popup=["name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
                 rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]
+    if marks_fc:
+        overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
     return overlays, {"width_m_col": "width_m"}
