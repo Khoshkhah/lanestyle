@@ -98,8 +98,10 @@ def shape(name, lane_width):
 def place(shp, lane_line, at_m, lane_width=None, step=0.5, offset_m=0.0):
     """GeoJSON LineString features (lon/lat, `width_m` each) of `shp` centred `at_m` metres along `lane_line` (a lon/lat LineString),
     bent with the line: a point (u, v) goes to u metres on along the line and v metres to its left.
-    `offset_m` moves the whole mark that far to the left of the line (to put it on a lane beside the road's centre line; an item's own
-    line offset would blow a small shape up, so the strokes carry their place)."""
+    `offset_m` moves the whole mark that far to the RIGHT of the line, the same side as roadstyle's item offsets and MapLibre's
+    line-offset (positive = right of the direction of travel), so a lane and its marks take the same number (2026-10-09: left
+    here and right there mirrored the marks across the road). An item's own line offset would blow a small shape up, so the strokes
+    carry their place."""
     x0, y0 = lane_line.coords[0][:2]
     fwd = Transformer.from_crs(4326, f"+proj=aeqd +lat_0={y0} +lon_0={x0} +datum=WGS84", always_xy=True)
     back = Transformer.from_crs(f"+proj=aeqd +lat_0={y0} +lon_0={x0} +datum=WGS84", 4326, always_xy=True)
@@ -121,7 +123,7 @@ def place(shp, lane_line, at_m, lane_width=None, step=0.5, offset_m=0.0):
             m = max(1, math.ceil(math.hypot(u1 - u0, v1 - v0) / step))
             dense += [(u0 + (u1 - u0) * i / m, v0 + (v1 - v0) * i / m) for i in range(m)]
         dense.append(pts[-1])
-        xs, ys = zip(*[at(u, v + offset_m) for u, v in dense])
+        xs, ys = zip(*[at(u, v - offset_m) for u, v in dense])
         lon, lat = back.transform(xs, ys)
         feats.append({"type": "Feature", "properties": {"width_m": w},
                       "geometry": {"type": "LineString", "coordinates": [[a, b] for a, b in zip(lon, lat, strict=True)]}})

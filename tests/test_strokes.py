@@ -58,3 +58,11 @@ def test_dashes_are_fixed_pieces_in_metres():
     xs = [_metres(f)[0][0] for f in d[:3]]
     assert abs(xs[1] - xs[0] - 12) < 0.2 and abs(_metres(d[0])[-1][0] - _metres(d[0])[0][0] - 3) < 0.1
     assert strokes.positions(100, 90) == [90] and strokes.positions(100, 10, 30, 10) == [10, 40, 70]
+
+
+def test_offset_is_to_the_right_like_roadstyle():
+    """A positive offset puts the mark on the right of the direction of travel, as roadstyle's item offsets and MapLibre's line-offset
+    (2026-10-09: the marks were mirrored across the road)."""
+    east = LineString([(7.42, 43.73), (7.43, 43.73)])
+    f = strokes.place([([(-0.5, 0), (0.5, 0)], 0.2)], east, 100, offset_m=2.0)
+    assert all(lat < 43.73 for _, lat in f[0]["geometry"]["coordinates"])          # south of an eastward line = its right
