@@ -11,14 +11,14 @@ from shapely.geometry import LineString
 
 ARROWS = ("thru", "left", "right", "uturn", "left+thru", "thru+right", "left+right", "left+thru+right")
 STROKE = 0.4          # painted line width, m (2026-10-09: 0.3 too thin)
-LENGTH = 6.0          # arrow length, m (2026-10-09: 4 m too small)
+LENGTH = 8.0          # arrow length, m (2026-10-09: 4 m too small, then 6 m: longer and thinner)
 
 
-SHAFT = 0.45         # an arrow's shaft and branches, m (2026-10-09: thicker, like painted arrows)
+SHAFT = 0.3          # an arrow's shaft and branches, m (2026-10-09: 0.45 too thick)
 FILL = 0.1           # the thin strokes that fill an arrow's head solid, m
 
 
-def _head(tip, ang, k, hl=1.5, hb=0.75):
+def _head(tip, ang, k, hl=1.8, hb=0.55):
     """A SOLID triangular head with its point at `tip`, pointing at angle `ang` (0 = forward, 90 = left): a fan of thin strokes from
     the base to the tip, close enough to read as one painted triangle (a single stroke width per item, so no polygon is needed)."""
     a, hl, hb = math.radians(ang), hl * k, hb * k                      # head length, half its base
@@ -40,7 +40,7 @@ def _arrow(moves, W):
     """A painted lane arrow: a thick shaft, smooth bends into the turns, solid heads; (polylines, width) pairs: the shaft and branches at
     SHAFT, the heads' fill at FILL."""
     k, L = min(1.0, W / 3.25), LENGTH
-    head = 1.5 * k
+    head = 1.8 * k
     thick, fill = [], []
     if moves == {"uturn"}:
         r = min(0.3 * W, W / 2 - 0.75 * k - 0.15)
@@ -62,7 +62,7 @@ def _arrow(moves, W):
                 c45 = math.cos(math.radians(45))
                 end = (arc[-1][0] + 0.5 * k * c45, arc[-1][1] + sgn * 0.5 * k * c45)
                 thick.append(arc + [end])
-                fill += _head((end[0] + 1.0 * k * c45, end[1] + sgn * 1.0 * k * c45), 45 * sgn, k, hl=1.0, hb=0.5)
+                fill += _head((end[0] + 1.2 * k * c45, end[1] + sgn * 1.2 * k * c45), 45 * sgn, k, hl=1.2, hb=0.4)
     return [(p, SHAFT) for p in thick] + [(p, FILL) for p in fill]
 
 
