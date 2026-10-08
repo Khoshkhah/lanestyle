@@ -38,7 +38,12 @@ def _strokes(gmns, source_db):
     two = items.two_way_links(road_of)
     width = {str(lk): float(w) + 2 * float(s["casing_m"]) + (float(s["centre_line_m"]) / 2 if int(lk) in two else 0.0)
              for lk, w in g.groupby("link_id")["width_m"].sum().items()}
-    return lane_fc, line_fc, marks_fc, width
+    # the casing's line, as the lane page: the middle of the carriageway (link_roads), the reverse link's backwards (GMNS moves a one-way
+    # carriageway's lanes off its OSM line where an opposite one runs close by: on the OSM line the casing missed its lanes, 2026-10-10)
+    from shapely.geometry import LineString
+    line = dict(zip(roads["edge_id"].astype(int), roads.geometry, strict=True))
+    lines = {str(lk): (line[rd] if lk == rd else LineString(list(line[rd].coords)[::-1])) for lk, rd in road_of.items() if rd in line}
+    return lane_fc, line_fc, marks_fc, width, lines
 
 
 def lane_items(roads):
@@ -49,7 +54,7 @@ def lane_items(roads):
     gmns, src = os.environ.get("LANESTYLE_GMNS"), os.environ.get("LANESTYLE_SOURCE_DB")
     if not gmns:
         raise ValueError("lanestyle.editor.lane_items: set LANESTYLE_GMNS to the GMNS .duckdb (and LANESTYLE_SOURCE_DB to its duckOSM file)")
-    lane_fc, line_fc, marks_fc, width = _strokes(gmns, src)
+    lane_fc, line_fc, marks_fc, width, lines = _strokes(gmns, src)
     edges = set(roads["edge"].astype(str))
 
     def on_edges(fc):
@@ -60,6 +65,7 @@ def lane_items(roads):
         return {"type": "FeatureCollection", "features": out}
 
     roads["width_m"] = [width.get(e, np.nan) for e in roads["edge"].astype(str)]
+    roads.geometry = [lines.get(e, g) for e, g in zip(roads["edge"].astype(str), roads.geometry, strict=True)]
     m = dict(edge_col="road_id", order_col="order", color_col="color", width_m_col="width_m", offset_m_col="offset_m")
     overlays = [rs.Overlay(on_edges(lane_fc), label="lanes", popup=["name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
                 rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]

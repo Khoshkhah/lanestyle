@@ -258,4 +258,6 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     assert {f["properties"]["road_id"] for f in feats} == set(links[1:]) and lanes_ov.select == "item" and lanes_ov.edge_col == "road_id"
     assert all(f["properties"]["road_id"] in links[1:] for f in lines_ov.data["features"])
     assert "left out" in capsys.readouterr().out
+    # the casing's line is the lane page's (the middle of the carriageway), not the editor's: every edge left its dummy line
+    assert all(g.coords[0] != (0.0, 0.0) for g in drawn.geometry)
     editor._strokes.cache_clear()
