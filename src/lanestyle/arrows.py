@@ -107,3 +107,59 @@ def lane_arrows(lanes, turns, s, avoid=None):
     return {"type": "FeatureCollection", "features": [
         {"type": "Feature", "properties": {"b": b, "edge_id": link}, "geometry": {"type": "Polygon", "coordinates": [[[round(x, 7), round(y, 7)] for x, y in p.exterior.coords]]}}
         for p, (b, link) in zip(ll, bands) if p.geom_type == "Polygon"]}
+
+
+_ORDER = ("left", "thru", "right")
+
+
+def _mark_name(kinds):
+    """strokes.shape's name for a set of moves: "uturn", or the moves in left / thru / right order joined by "+"."""
+    if kinds == {"uturn"}:
+        return "uturn"
+    return "+".join(k for k in _ORDER if k in kinds) or "thru"
+
+
+def mark_strokes(lanes, turns, s, shifts, colour="#ffffff"):
+    """The painted marks of each lane as LINE items (2026-10-10, docs/design/lane_arrows.md; strokes.py): a car lane's arrow (its moves, from
+    ``turns``) ``end_m`` before its end, then a plain arrow back along it every ``repeat_m``; a bus lane's BUS and a bike lane's bike from 15 m,
+    then every ``repeat_m``. Each mark lies on its lane's own line, shifted as the lane (``shifts``, :func:`lanestyle.items.lane_shifts`), so it
+    is exactly where the lane is filled; one item per lane and stroke width (a MultiLineString; ``edge_id`` its link, ``order`` ARROW).
+    ``s``: ``lanes.arrows``. None when nothing is marked."""
+    from shapely.geometry import LineString
+
+    from lanestyle import strokes
+
+    if not s or "link_id" not in lanes:
+        return None
+    turns_of = {}
+    if turns is not None and len(turns):
+        kind = turns["type"].where(turns["turn"].isna(), turns["turn"]) if "turn" in turns and "type" in turns else (turns["type"] if "type" in turns else [])
+        for a, t in zip(turns["from_lane"].astype(str), kind):
+            turns_of.setdefault(a, set()).add(t)
+    lanes = lanes.reset_index(drop=True)
+    siblings = lanes.groupby("link_id")["lane_id"].apply(lambda x: [str(i) for i in x]).to_dict()
+    back, every = float(s["end_m"]), float(s.get("repeat_m") or 0)
+    out = []
+    for i, r in enumerate(lanes.itertuples()):
+        use, ln, w = str(getattr(r, "use", "auto") or "auto"), r.geometry, float(r.width_m)
+        if ln is None or ln.geom_type != "LineString" or use == "walk":
+            continue
+        n = strokes.length_m(ln)
+        if use.startswith("bus") or use == "bike":
+            name = "bus" if use.startswith("bus") else "bike"
+            at = [(d, name) for d in strokes.positions(n, 15, every or 60, back)]
+        else:
+            if n < strokes.LENGTH + 2:
+                continue
+            end = n - back if n >= 2 * back else n / 2
+            at = [(end, _mark_name(_kinds(str(r.lane_id), siblings[r.link_id], turns_of) or {"thru"}))]
+            while every and at[-1][0] - every > 2 * strokes.LENGTH:
+                at.append((at[-1][0] - every, "thru"))
+        by_w = {}
+        for d, name in at:
+            for f in strokes.place(strokes.shape(name, w), ln, d, w, offset_m=shifts[i]):
+                by_w.setdefault(f["properties"]["width_m"], []).append(f["geometry"]["coordinates"])
+        for wm, parts in by_w.items():
+            out.append({"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": parts},
+                        "properties": {"edge_id": int(r.link_id), "order": 3, "color": colour, "width_m": wm, "offset_m": 0.0, "lane_id": str(r.lane_id)}})
+    return {"type": "FeatureCollection", "features": out} if out else None

@@ -444,7 +444,7 @@ def test_a_footpath_has_no_arrow_and_a_tunnel_is_as_opaque_as_a_road(tmp_path):
     gmns, src = _with_walking(tmp_path)
     html = ls.render_lanes(*ls.from_gmns(gmns, modes=("driving", "walking"))).html
     lanes = _lane_props(html)
-    arrowed = {p["edge_id"] for p in _page(html)[1]["lane arrows"]}                       # the painted arrows are items of their lane's link
+    arrowed = {p["edge_id"] for p in _page(html)[1]["lane marks"]}                       # the painted arrows are items of their lane's link
     assert lanes["5_1"]["edge_id"] not in arrowed and lanes["1_1"]["edge_id"] in arrowed and lanes["2_1"]["edge_id"] in arrowed   # walk: none; roads: yes
 
 
@@ -578,7 +578,7 @@ def test_painted_arrows_are_the_one_direction_marking():
     gmns, src = _dbs(__import__("pathlib").Path(__import__("tempfile").mkdtemp()))
     html = ls.render_lanes(*ls.from_gmns(gmns, source_db=src)).html
     style, ov = _page(html)
-    assert not any(f["properties"].get("oneway") for f in style["sources"]["roads"]["data"]["features"]) and ov["lane arrows"]     # roadstyle's chevrons off, ours on
+    assert not any(f["properties"].get("oneway") for f in style["sources"]["roads"]["data"]["features"]) and ov["lane marks"]     # roadstyle's chevrons off, ours on (strokes)
     assert not any("arrow" in lyr["id"] and lyr["id"].startswith("roads") for lyr in style["layers"])
 
 

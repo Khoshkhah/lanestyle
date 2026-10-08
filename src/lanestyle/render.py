@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from lanestyle import items
-from lanestyle.arrows import lane_arrows
+from lanestyle.arrows import lane_arrows, mark_strokes
 from lanestyle.frames import frames
 from lanestyle.junctions import junction_fillets
 from lanestyle.levels import COLUMNS, by_link, link_levels, own_levels, stored_head_m
@@ -577,7 +577,6 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     cr = crossings if crossings is not None else lanes.attrs.get("crossings")
     zebra, zlinks, zfoot = _zebra_stripes(g, cr, s["zebra"]) if s.get("zebra") else ([], [], None)
     gaps, frame, _ = frames(g, s)                # a road and its sidewalk within frame_gap_m: one frame
-    arrows = lane_arrows(g, turns, s.get("arrows"), avoid=zfoot)
     fillets = junction_fillets(g, s)             # connectors included: their corners are the usual gaps
     if gaps:
         fillets = gaps if not fillets else {"type": "FeatureCollection", "features": fillets["features"] + gaps["features"]}
@@ -595,6 +594,8 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     lane_fc, line_fc = items.lane_strokes(g[~isconn], colours[~isconn], land, popup, road_of, float(s["centre_line_m"]), s["lines"] or {"divider": False, "centre": False},
                                           float(s["junction_trim_m"]), on_road=np.nonzero(on_mask[~isconn])[0], level_of=_level,
                                           ext=roads.attrs["ext"])
+    road_lanes = g[~isconn]                       # the marks: arrows, BUS, bike as strokes on their lane, shifted as the lane (one rule: items.lane_shifts)
+    marks_fc = mark_strokes(road_lanes, turns, s.get("arrows"), items.lane_shifts(road_lanes.reset_index(drop=True), road_of, float(s["centre_line_m"])))
     conn_fc = (items.connector_strokes(g[isconn], colours[isconn], land, popup, dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
                if s.get("connectors", True) else None)      # lanestyle.json "connectors": false leaves them off (2026-10-10: roads first, then junctions)
     overlays = [rs.Overlay(items.on_roads(fc, road_of), edge_col="road_id", order_col="order", style=style, label=label, popup=pop, **extra)
@@ -603,7 +604,7 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
                     (lane_fc, None, "lanes", popup, {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m", "select": "item"}),
                     (line_fc, None, "lane lines", [], {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"}),
                     (items.stripes(zebra, zlinks), "zebra", "zebra crossings", [], {}),
-                    (items.tag(arrows, items.ARROW), "lane_arrow", "lane arrows", [], {})) if fc]
+                    (marks_fc, None, "lane marks", [], {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"})) if fc]
     rs_settings = _merge(_merge(lane_theme(), _ROADSTYLE), {k: v for k, v in (settings or {}).items() if k != "lanes"})
     m = draw(
         roads, palette=palette, road_fill=False, edge_id_col="edge_id", directed_col="directed", overlays=overlays,

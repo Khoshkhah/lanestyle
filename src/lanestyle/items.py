@@ -300,6 +300,21 @@ def _extend(ln, e0, e1):
     return LineString(([out(cs[0], cs[1], e0)] if e0 > 0 else []) + cs + ([out(cs[-1], cs[-2], e1)] if e1 > 0 else []))
 
 
+def two_way_links(road_of):
+    """The links that are one direction of a road of two (``road_of``: link -> road, :func:`link_roads`)."""
+    from collections import Counter
+    links = Counter(road_of.values())
+    return {lk for lk, rd in road_of.items() if links[rd] == 2}
+
+
+def lane_shifts(g, road_of, centre_m):
+    """Each lane's sideways shift (metres, + = right of its travel): ``centre_m / 2`` on a road of two directions, so the centre line has its
+    own width between them; 0 on a one-way road. The one rule for the lanes and everything painted on them (lines, arrows, BUS, bike)."""
+    two = two_way_links(road_of)
+    # ponytail: right-hand traffic only (the centre is on the left of travel), as lines.py; left-hand moves the lanes the other way
+    return [centre_m / 2 if int(lk) in two else 0.0 for lk in g["link_id"]]
+
+
 def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_road=(), level_of=None, ext=None):
     """The lanes of ``g`` (no connectors) and the lines between them, as LINE items (roadstyle's simple mode draws them in the one road layer at their road's fill):
     ``(lanes, lines)``, two FeatureCollections. A lane is its own GMNS line, ``width_m`` wide, in its colour (``colours``; a tunnel's blended with ``land``); on a road of two
@@ -328,10 +343,8 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
         drawn = gpd.GeoSeries(geo, crs=u.crs).to_crs(4326)
     else:
         drawn = g.geometry
-    links = Counter(road_of.values())
-    two = {lk for lk, rd in road_of.items() if links[rd] == 2}
-    # ponytail: right-hand traffic only (the centre is on the left of travel), as lines.py; left-hand moves the lanes the other way
-    shift = [centre_m / 2 if int(lk) in two else 0.0 for lk in g["link_id"]]
+    two = two_way_links(road_of)
+    shift = lane_shifts(g, road_of, centre_m)
     cols = [c for c in dict.fromkeys([*popup, "lane_id"]) if c in g]
     on = set(on_road)
     lane_fs = []
