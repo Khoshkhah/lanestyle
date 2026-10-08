@@ -120,9 +120,8 @@ def link_roads(g, casing_m, centre_m=0.0):
 
 
 def _ends(lines, nodes, widths, ids):
-    """How each road ends (UTM ``lines``): where only two roads meet (a road that goes on) its outline keeps its round end and the lanes are drawn on, past the
-    node, as far as the outer side of the bend needs (``ext[(road, node)]``, metres: half the road's width x tan(half the bend), at most the width), so the lanes cover
-    the wedge between the two roads' flat lane ends. At a junction (three or more roads) and a dead end the outline ends flat at the node (cap True): the
+    """How each road ends (UTM ``lines``): where only two roads meet (a road that goes on) its outline keeps its round end and the lane lines run on through the
+    node (``ext[(road, node)]``, the node is a key; the value, half the road's width x tan(half the bend), is no longer used: the lanes keep their GMNS length). At a junction (three or more roads) and a dead end the outline ends flat at the node (cap True): the
     connectors are the junction's surface, and a round outline would show as a dark half disc beyond the lanes."""
     import math
     from collections import defaultdict
@@ -288,18 +287,6 @@ def _line(geom):
     return {"type": geom.geom_type, "coordinates": [_round(p.coords) for p in geom.geoms] if geom.geom_type == "MultiLineString" else _round(geom.coords)}
 
 
-def _extend(ln, e0, e1):
-    """``ln`` (metres) drawn on straight past its start by ``e0`` and past its end by ``e1``."""
-    from shapely.geometry import LineString
-
-    cs = [c[:2] for c in ln.coords]
-
-    def out(p, q, e):
-        d = ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5 or 1.0
-        return (p[0] + (p[0] - q[0]) / d * e, p[1] + (p[1] - q[1]) / d * e)
-    return LineString(([out(cs[0], cs[1], e0)] if e0 > 0 else []) + cs + ([out(cs[-1], cs[-2], e1)] if e1 > 0 else []))
-
-
 def two_way_links(road_of):
     """The links that are one direction of a road of two (``road_of``: link -> road, :func:`link_roads`)."""
     from collections import Counter
@@ -321,7 +308,7 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
     directions every lane is moved ``centre_m / 2`` to the right of its travel (``offset_m``), so the centre line has its own width between the directions.
     The lines lie on the borders between neighbouring lanes of a link: dashed in metres (``lines["dash_m"]`` / ``lines["gap_m"]``, :func:`lanestyle.strokes.dashes`) between two car lanes,
     solid next to any other lane (bus, bike); a road of two directions gets one solid centre line, ``centre_m`` wide, on lane 1's left edge of its first link. A line stops
-    ``trim_m`` short of a junction end of its lane and runs on through a node where its road goes on. ``road_of``: link -> road (:func:`link_roads`)."""
+    ``trim_m`` short of a junction end of its lane and runs on through a node where its road goes on (``ext``'s nodes). ``road_of``: link -> road (:func:`link_roads`)."""
     from collections import Counter
 
     import geopandas as gpd
@@ -336,13 +323,7 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
     bad = [i for i, ln in enumerate(g.geometry) if ln is None or ln.geom_type != "LineString" or ln.is_empty]
     if bad:
         raise ValueError(f"{len(bad)} lane(s) have no line (first: {list(g['lane_id'].iloc[bad[:5]])})")
-    if ext:                     # the lanes drawn on past a node where their road goes on (link_roads' ``ext``), over the wedge of the bend
-        u = g.to_crs(g.estimate_utm_crs())
-        geo = [_extend(ln, ext.get((road_of.get(int(lk)), int(a)), 0.0), ext.get((road_of.get(int(lk)), int(b)), 0.0))
-               for ln, lk, a, b in zip(u.geometry, g["link_id"], g["from_node_id"], g["to_node_id"], strict=True)]
-        drawn = gpd.GeoSeries(geo, crs=u.crs).to_crs(4326)
-    else:
-        drawn = g.geometry
+    drawn = g.geometry           # each lane its own GMNS line, never longer (2026-10-10: no change in a lane's length without connectors)
     two = two_way_links(road_of)
     shift = lane_shifts(g, road_of, centre_m)
     cols = [c for c in dict.fromkeys([*popup, "lane_id"]) if c in g]

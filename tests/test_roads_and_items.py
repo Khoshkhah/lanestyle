@@ -233,7 +233,6 @@ def test_an_outline_ends_flat_at_a_junction_and_round_where_its_road_goes_on():
     cap0, cap1, ext = items._ends(lines, [(10, 20), (20, 30), (30, 40), (30, 50)], [8.0] * 4, [1, 2, 3, 4])
     assert cap0[:2] == [True, None] and cap1[:2] == [None, True]
     assert abs(ext[(1, 20)] - 4.0) < 1e-9 and abs(ext[(2, 20)] - 4.0) < 1e-9 and (2, 30) not in ext      # half the width x tan(45 degrees)
-    assert items._extend(LineString([(0, 0), (10, 0)]), 2.0, 0.0).coords[0] == (-2.0, 0.0)
 
 
 def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path, monkeypatch, capsys):
