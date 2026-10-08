@@ -115,7 +115,37 @@ def link_roads(g, casing_m, centre_m=0.0):
     roads["band"] = tags_band(roads)
     roads["directed"] = False                          # a road is one carriageway: never paired as two lanes
     roads.attrs["road_of"] = road_of
+    roads["cap0"], roads["cap1"], roads.attrs["ext"] = _ends(geoms, nodes, [r["width_m"] for r in rows], [r["edge_id"] for r in rows])
     return roads
+
+
+def _ends(lines, nodes, widths, ids):
+    """How each road ends (UTM ``lines``): where only two roads meet (a road that goes on) its outline keeps its round end and the lanes are drawn on, past the
+    node, as far as the outer side of the bend needs (``ext[(road, node)]``, metres: half the road's width x tan(half the bend), at most the width), so the lanes cover
+    the wedge between the two roads' flat lane ends. At a junction (three or more roads) and a dead end the outline ends flat at the node (cap True): the
+    connectors are the junction's surface, and a round outline would show as a dark half disc beyond the lanes."""
+    import math
+    from collections import defaultdict
+
+    at = defaultdict(list)                                       # node -> [(road index, unit vector from the node along the road, width)]
+    for k, (ln, (a, b)) in enumerate(zip(lines, nodes, strict=True)):
+        cs = [c[:2] for c in ln.coords]
+        for node, p, q in ((a, cs[0], cs[1]), (b, cs[-1], cs[-2])):
+            d = math.hypot(q[0] - p[0], q[1] - p[1]) or 1.0
+            at[node].append((k, ((q[0] - p[0]) / d, (q[1] - p[1]) / d), widths[k]))
+    caps, ext = [[None, None] for _ in lines], {}
+    for k, (a, b) in enumerate(nodes):
+        for j, node in enumerate((a, b)):
+            if len(at[node]) != 2:
+                caps[k][j] = True
+    for node, ends in at.items():
+        if len(ends) != 2:
+            continue
+        (k1, u, w1), (k2, v, w2) = ends
+        bend = math.pi - math.acos(max(-1.0, min(1.0, u[0] * v[0] + u[1] * v[1])))     # 0 = straight on
+        for k, w in ((k1, w1), (k2, w2)):
+            ext[(int(ids[k]), node)] = min(w / 2 * math.tan(bend / 2), w)
+    return [c[0] for c in caps], [c[1] for c in caps], ext
 
 
 def on_roads(fc, road_of):
@@ -258,7 +288,19 @@ def _line(geom):
     return {"type": geom.geom_type, "coordinates": [_round(p.coords) for p in geom.geoms] if geom.geom_type == "MultiLineString" else _round(geom.coords)}
 
 
-def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_road=(), level_of=None):
+def _extend(ln, e0, e1):
+    """``ln`` (metres) drawn on straight past its start by ``e0`` and past its end by ``e1``."""
+    from shapely.geometry import LineString
+
+    cs = [c[:2] for c in ln.coords]
+
+    def out(p, q, e):
+        d = ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5 or 1.0
+        return (p[0] + (p[0] - q[0]) / d * e, p[1] + (p[1] - q[1]) / d * e)
+    return LineString(([out(cs[0], cs[1], e0)] if e0 > 0 else []) + cs + ([out(cs[-1], cs[-2], e1)] if e1 > 0 else []))
+
+
+def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_road=(), level_of=None, ext=None):
     """The lanes of ``g`` (no connectors) and the lines between them, as LINE items (roadstyle's simple mode draws them in the one road layer at their road's fill):
     ``(lanes, lines)``, two FeatureCollections. A lane is its own GMNS line, ``width_m`` wide, in its colour (``colours``; a tunnel's blended with ``land``); on a road of two
     directions every lane is moved ``centre_m / 2`` to the right of its travel (``offset_m``), so the centre line has its own width between the directions.
@@ -267,6 +309,7 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
     ``trim_m`` short of each end of its lane. ``road_of``: link -> road (:func:`link_roads`)."""
     from collections import Counter
 
+    import geopandas as gpd
     from shapely.geometry import LineString, MultiLineString
     from shapely.ops import substring
 
@@ -278,6 +321,13 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
     bad = [i for i, ln in enumerate(g.geometry) if ln is None or ln.geom_type != "LineString" or ln.is_empty]
     if bad:
         raise ValueError(f"{len(bad)} lane(s) have no line (first: {list(g['lane_id'].iloc[bad[:5]])})")
+    if ext:                     # the lanes drawn on past a node where their road goes on (link_roads' ``ext``), over the wedge of the bend
+        u = g.to_crs(g.estimate_utm_crs())
+        geo = [_extend(ln, ext.get((road_of.get(int(lk)), int(a)), 0.0), ext.get((road_of.get(int(lk)), int(b)), 0.0))
+               for ln, lk, a, b in zip(u.geometry, g["link_id"], g["from_node_id"], g["to_node_id"], strict=True)]
+        drawn = gpd.GeoSeries(geo, crs=u.crs).to_crs(4326)
+    else:
+        drawn = g.geometry
     links = Counter(road_of.values())
     two = {lk for lk, rd in road_of.items() if links[rd] == 2}
     # ponytail: right-hand traffic only (the centre is on the left of travel), as lines.py; left-hand moves the lanes the other way
@@ -292,7 +342,7 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
         props = {k: (None if v is None or v != v else (v.item() if hasattr(v, "item") else v if isinstance(v, (str, int, float, bool)) else str(v))) for k, v in row.items()}
         props.update({"edge_id": int(g["link_id"].iloc[i]), "order": FOOTPATH_ON_ROAD if i in on else LANE, "color": colour,
                       "width_m": float(g["width_m"].iloc[i]), "offset_m": shift[i]})
-        lane_fs.append({"type": "Feature", "properties": props, "geometry": _line(g.geometry.iloc[i])})
+        lane_fs.append({"type": "Feature", "properties": props, "geometry": _line(drawn.iloc[i])})
 
     line_fs = []
 
@@ -320,6 +370,25 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
             add(lk, g.geometry[rows[0]], -float(g["width_m"][rows[0]]) / 2, False, centre_m, "centre")
     fc = lambda fs: {"type": "FeatureCollection", "features": fs} if fs else None       # noqa: E731
     return fc(lane_fs), fc(line_fs)
+
+
+def connector_strokes(c, colours, land, popup, lane_width, level_of=None):
+    """The lane connectors ``c`` (rows of the lane table with ``connector``) as LINE items: each its own line through the junction, as wide as the lane it leaves
+    (``lane_width``: lane_id -> width; GMNS's own connector width is narrower), in its colour, attached to the link it leaves (its ``link_id``) with the order
+    :data:`CONNECTOR`: under that road's lanes, over the outlines of the roads before it. None without any."""
+    if not len(c):
+        return None
+    c = c.reset_index(drop=True)
+    cols = [k for k in dict.fromkeys([*popup, "lane_id"]) if k in c]
+    feats = []
+    for i, row in enumerate(c[cols].to_dict("records")):
+        colour = colours.iloc[i]
+        if level_of and level_of(c.iloc[i]) == "low":
+            colour = _blend(colour, land)
+        props = {k: (None if v is None or v != v else (v.item() if hasattr(v, "item") else v if isinstance(v, (str, int, float, bool)) else str(v))) for k, v in row.items()}
+        props.update({"edge_id": int(c["link_id"].iloc[i]), "order": CONNECTOR, "color": colour, "width_m": float(lane_width[c["from_lane"].iloc[i]]), "offset_m": 0.0})
+        feats.append({"type": "Feature", "properties": props, "geometry": _line(c.geometry.iloc[i])})
+    return {"type": "FeatureCollection", "features": feats}
 
 
 def tag(fc, order, **extra):

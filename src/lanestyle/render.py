@@ -15,7 +15,6 @@ from lanestyle.frames import frames
 from lanestyle.junctions import junction_fillets
 from lanestyle.levels import COLUMNS, by_link, link_levels, own_levels, stored_head_m
 from lanestyle.lines import _group, _level, _paired
-from lanestyle.street_names import street_names
 
 _LEVEL = {"bridge": "bridge", "high": "above ground", "ground": "ground", "low": "tunnel / below ground"}
 def pd_isna(v):
@@ -594,23 +593,22 @@ def render_lanes(lanes, turns=None, palette="mono", settings=None, crossings=Non
     on_mask[on_road] = True
     land = s["tunnel_body"]
     lane_fc, line_fc = items.lane_strokes(g[~isconn], colours[~isconn], land, popup, road_of, float(s["centre_line_m"]), s["lines"] or {"divider": False, "centre": False},
-                                          float(s["junction_trim_m"]), on_road=np.nonzero(on_mask[~isconn])[0], level_of=_level)
-    conn_fc = items.tag(items.lane_items(g[isconn], colours[isconn], land, popup, level_of=_level), items.CONNECTOR)
-    names = street_names(g, arrows, s.get("names"), avoid=zfoot)
+                                          float(s["junction_trim_m"]), on_road=np.nonzero(on_mask[~isconn])[0], level_of=_level,
+                                          ext=roads.attrs["ext"])
+    conn_fc = items.connector_strokes(g[isconn], colours[isconn], land, popup, dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
     overlays = [rs.Overlay(items.on_roads(fc, road_of), edge_col="road_id", order_col="order", style=style, label=label, popup=pop, **extra)
                 for fc, style, label, pop, extra in (
-                    (conn_fc, "connector", "connectors", popup if s.get("connectors_clickable") else [], {"color_col": "color"}),
-                    (lane_fc, None, "lanes", popup, {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"}),
+                    (conn_fc, None, "connectors", popup if s.get("connectors_clickable") else [], {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"}),
+                    (lane_fc, None, "lanes", popup, {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m", "select": "item"}),
                     (line_fc, None, "lane lines", [], {"color_col": "color", "width_m_col": "width_m", "offset_m_col": "offset_m"}),
                     (items.stripes(zebra, zlinks), "zebra", "zebra crossings", [], {}),
-                    (items.tag(arrows, items.ARROW), "lane_arrow", "lane arrows", [], {}),
-                    (items.tag(names, items.NAME), "street_name", "street names", [], {})) if fc]
+                    (items.tag(arrows, items.ARROW), "lane_arrow", "lane arrows", [], {})) if fc]
     rs_settings = _merge(_merge(lane_theme(), _ROADSTYLE), {k: v for k, v in (settings or {}).items() if k != "lanes"})
     m = draw(
         roads, palette=palette, road_fill=False, edge_id_col="edge_id", directed_col="directed", overlays=overlays,
-        width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=float(s["casing_m"]),
+        width_m_col="width_m", width_m_zoom=s["width_m_zoom"], casing_m=float(s["casing_m"]), cap_start_col="cap0", cap_end_col="cap1",
         casing_level_col="casing_level", fill_level_col="fill_level", casing_start_col="casing_start", casing_end_col="casing_end", head_m=head_m,
-        arrows=False, labels=False,                # the lane arrows and the street names are items, lanestyle's own
+        arrows=False, labels=True,                 # the lane arrows are lanestyle's own items; the street names are roadstyle's, one per road (its ``name``)
         road_popup=[c for c in ("name", "highway", "edge_ref", "osm_id") if c in roads.columns],
         **{"select_color": s["colors"]["clicked"], **kwargs},   # roadstyle's own selection glow
         settings=rs_settings)

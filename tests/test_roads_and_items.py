@@ -223,3 +223,14 @@ def test_lanes_and_lines_are_line_items_with_the_centre_line_between_the_directi
     assert set(by) == {"divider", "centre"} and all(f["properties"]["order"] > items.LANE for f in lines["features"])
     assert by["divider"]["geometry"]["type"] == "MultiLineString" and len(by["divider"]["geometry"]["coordinates"]) == 8      # 98 m: a 3 m dash every 12 m
     assert by["centre"]["properties"]["width_m"] == 0.15 and by["centre"]["properties"]["offset_m"] == -1.625 and by["centre"]["properties"]["edge_id"] == 1
+
+
+def test_an_outline_ends_flat_at_a_junction_and_round_where_its_road_goes_on():
+    """Roads 1 and 2 meet at node 20 at a right angle (the road goes on: round outline, lanes drawn on over the bend); node 30 is a junction of three (flat), 10 a dead end (flat)."""
+    from shapely.geometry import LineString
+
+    lines = [LineString([(0, 0), (100, 0)]), LineString([(100, 0), (100, 100)]), LineString([(100, 100), (200, 100)]), LineString([(100, 100), (0, 100)])]
+    cap0, cap1, ext = items._ends(lines, [(10, 20), (20, 30), (30, 40), (30, 50)], [8.0] * 4, [1, 2, 3, 4])
+    assert cap0[:2] == [True, None] and cap1[:2] == [None, True]
+    assert abs(ext[(1, 20)] - 4.0) < 1e-9 and abs(ext[(2, 20)] - 4.0) < 1e-9 and (2, 30) not in ext      # half the width x tan(45 degrees)
+    assert items._extend(LineString([(0, 0), (10, 0)]), 2.0, 0.0).coords[0] == (-2.0, 0.0)
