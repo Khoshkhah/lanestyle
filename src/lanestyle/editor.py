@@ -12,6 +12,48 @@ from functools import lru_cache
 import numpy as np
 
 
+def _junction_plan(lanes, turns):
+    """The junction rule with connectors on (2026-10-10): a lane runs on to its node at an end where traffic goes STRAIGHT into the
+    same lane number (straight, a merge, a fork's straight branch), else it stops where SUMO cut it; a connector is drawn for a turn
+    (left, right, a fork's side branch) and for straight on into another lane number (SUMO's short S-curve), never for a U-turn or plain
+    straight on. ``lanes``: the lane table (lanes and connectors, ``from_lane`` / ``to_lane``), ``turns``: from_gmns' (``type``, ``turn``).
+    Returns ``(runs_out, runs_in, drawn)``: the lanes that run on at their end / start, the connector ids drawn."""
+    num = {k: n for k, n, c in zip(lanes["lane_id"], lanes.get("lane_num", [None] * len(lanes)), lanes.get("connector", [False] * len(lanes))) if not c}
+    kind = {}
+    for a, b, t, tn in zip(turns["from_lane"], turns["to_lane"], turns["type"], turns["turn"] if "turn" in turns else [None] * len(turns)):
+        straight = t in ("thru", "merge") or (t == "diverge" and tn == "thru")
+        kind[(str(a), str(b))] = "uturn" if t == "uturn" else ("straight" if straight else "turn")
+    runs_out, runs_in = set(), set()
+    for (a, b), k in kind.items():
+        if k == "straight" and num.get(a) is not None and num.get(a) == num.get(b):
+            runs_out.add(a)
+            runs_in.add(b)
+    drawn = set()
+    if "connector" in lanes:
+        for cid, a, b in lanes.loc[lanes["connector"].fillna(False).astype(bool), ["lane_id", "from_lane", "to_lane"]].itertuples(index=False):
+            k = kind.get((str(a), str(b)), "turn")
+            if k == "turn" or (k == "straight" and num.get(str(a)) != num.get(str(b))):
+                drawn.add(cid)
+    return runs_out, runs_in, drawn
+
+
+def _trim_to_plan(g, runs_out, runs_in):
+    """Each lane on its full line, cut at an end only where it does not run on (where SUMO cut it: ``cut_geometry``'s end, projected on the line)."""
+    from shapely.geometry import Point
+    from shapely.ops import substring
+    g = g.copy()
+    out = []
+    for lid, full, cut in zip(g["lane_id"], g.geometry, g["cut_geometry"] if "cut_geometry" in g else [None] * len(g)):
+        if cut is None or full is None or (lid in runs_out and lid in runs_in) or cut != cut:
+            out.append(full)
+            continue
+        a = 0.0 if lid in runs_in else full.project(Point(cut.coords[0]))
+        b = full.length if lid in runs_out else full.project(Point(cut.coords[-1]))
+        out.append(substring(full, a, b) if b > a else full)
+    g["geometry"] = out
+    return g
+
+
 @lru_cache(maxsize=1)
 def _strokes(gmns, source_db, connectors=False):
     """The lane table's lanes and lines as items (lanestyle.items.lane_strokes), each on its link (``edge_id``), and each link's width in metres.
@@ -25,18 +67,24 @@ def _strokes(gmns, source_db, connectors=False):
 
     s = lane_settings()
     lanes, turns = ls.from_gmns(gmns, source_db=source_db)
-    g = full_lanes(_roads_only(lanes), {**s, "connectors": connectors}).copy()     # off: the lanes to their nodes; on: to the junction
-    g["use"] = g["use"].fillna("auto") if "use" in g else "auto"
-    g["width_m"] = _widths(g, s)
-    isconn = g["connector"].fillna(False).astype(bool) if "connector" in g else None
-    conn_fc = None
+    base = _roads_only(lanes).copy()                      # every lane on its line to its nodes
+    base["use"] = base["use"].fillna("auto") if "use" in base else "auto"
+    base["width_m"] = _widths(base, s)
+    isconn = base["connector"].fillna(False).astype(bool) if "connector" in base else None
+    g, conn_fc = base, None
     if connectors and isconn is not None and isconn.any():
+        runs_out, runs_in, drawn = _junction_plan(base, turns)
+        g = _trim_to_plan(base, runs_out, runs_in)          # a lane runs on to its node where traffic goes straight on into its lane number
+        keep = isconn & g["lane_id"].isin(drawn)
         cc, cp, _ = _colour_groups(g, s)
-        conn_fc = items.connector_strokes(g[isconn], g.loc[isconn, cc].map(cp), s["tunnel_body"], ["lane_id"], dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
+        conn_fc = items.connector_strokes(g[keep], g.loc[keep, cc].map(cp), s["tunnel_body"], ["lane_id"], dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
+        conn_fc = _with_casing(conn_fc, g[keep], float(s["casing_m"]))
     if isconn is not None:                                # the lanes and their lines without the connectors
-        g = g[~isconn]
+        g, base = g[~isconn.values], base[~isconn.values]
     colour_col, palette_colors, _ = _colour_groups(g, s)
-    roads = items.link_roads(g, float(s["casing_m"]), float(s["centre_line_m"]))
+    # the road (its casing) on the lanes' full lines, to the nodes, whatever is drawn: SUMO cuts a road's two directions at different
+    # places, so the middle of their cut lines is skewed and short (2026-10-10, connectors on: casings and lanes did not match)
+    roads = items.link_roads(base, float(s["casing_m"]), float(s["centre_line_m"]))
     road_of = roads.attrs["road_of"]
     lane_fc, line_fc = items.lane_strokes(g, g[colour_col].map(palette_colors), s["tunnel_body"], ["name", "lane_id", "lane_num", "use", "width_m", "link_id"],
                                           road_of, float(s["centre_line_m"]), s["lines"] or {"divider": False, "centre": False},
@@ -51,6 +99,25 @@ def _strokes(gmns, source_db, connectors=False):
     line = dict(zip(roads["edge_id"].astype(int), roads.geometry, strict=True))
     lines = {str(lk): (line[rd] if lk == rd else LineString(list(line[rd].coords)[::-1])) for lk, rd in road_of.items() if rd in line}
     return lane_fc, line_fc, marks_fc, width, lines, conn_fc
+
+
+def _with_casing(fc, conn, casing_m):
+    """Each connector with a casing of its own: the same line, ``2 * casing_m`` wider, in the casing colour of its road's class (the editor's
+    palette, or ``LANESTYLE_CASING_COLOR``), ordered under every connector and lane of its link (ROAD_END)."""
+    import roadstyle as rs
+    from lanestyle.items import ROAD_END
+    if not fc:
+        return fc
+    test = os.environ.get("LANESTYLE_CASING_COLOR")
+    from roadstyle.palettes import DEFAULT_PALETTE
+    pal = rs.palette_to_dict(DEFAULT_PALETTE)
+    cls_of = dict(zip(conn["lane_id"], conn["highway"].astype(str).str.removesuffix("_link")))
+    missing = sorted({c for c in cls_of.values() if c not in pal}) if not test else []
+    if missing:
+        raise ValueError(f"lanestyle.editor: no casing colour for the road class(es) {missing} in roadstyle's palette")
+    under = [{**f, "properties": {**f["properties"], "order": ROAD_END, "color": test or pal[cls_of[f["properties"]["lane_id"]]]["casing"],
+                                    "width_m": f["properties"]["width_m"] + 2 * casing_m}} for f in fc["features"]]
+    return {"type": "FeatureCollection", "features": under + fc["features"]}
 
 
 def lane_items(roads):
