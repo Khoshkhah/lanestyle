@@ -13,52 +13,29 @@ import numpy as np
 
 
 def _junction_plan(lanes, turns):
-    """The junction rule with connectors on (2026-10-10): a lane runs on to its node at an end where traffic goes STRAIGHT into the
-    same lane number (straight, a merge, a fork's straight branch), else it stops where SUMO cut it; a connector is drawn for a turn
+    """The junction rule with connectors on (2026-10-10): every lane runs on to its node (SUMO's cut parts given back); a connector is drawn for a turn
     (left, right, a fork's side branch) and for straight on into another lane number (SUMO's short S-curve), never for a U-turn or plain
     straight on. ``lanes``: the lane table (lanes and connectors, ``from_lane`` / ``to_lane``), ``turns``: from_gmns' (``type``, ``turn``).
-    Returns ``(runs_out, runs_in, drawn)``: the lanes that run on at their end / start, the connector ids drawn."""
+    Returns the connector ids drawn."""
     num = {k: n for k, n, c in zip(lanes["lane_id"], lanes.get("lane_num", [None] * len(lanes)), lanes.get("connector", [False] * len(lanes))) if not c}
     kind = {}
     for a, b, t, tn in zip(turns["from_lane"], turns["to_lane"], turns["type"], turns["turn"] if "turn" in turns else [None] * len(turns)):
         straight = t in ("thru", "merge") or (t == "diverge" and tn == "thru")
         kind[(str(a), str(b))] = "uturn" if t == "uturn" else ("straight" if straight else "turn")
-    runs_out, runs_in = set(), set()
-    for (a, b), k in kind.items():
-        if k == "straight" and num.get(a) is not None and num.get(a) == num.get(b):
-            runs_out.add(a)
-            runs_in.add(b)
     drawn = set()
     if "connector" in lanes:
         for cid, a, b in lanes.loc[lanes["connector"].fillna(False).astype(bool), ["lane_id", "from_lane", "to_lane"]].itertuples(index=False):
-            k = kind.get((str(a), str(b)), "turn")
+            k = kind[(str(a), str(b))]          # every connector is a movement of the turn table
             if k == "turn" or (k == "straight" and num.get(str(a)) != num.get(str(b))):
                 drawn.add(cid)
-    return runs_out, runs_in, drawn
-
-
-def _trim_to_plan(g, runs_out, runs_in):
-    """Each lane on its full line, cut at an end only where it does not run on (where SUMO cut it: ``cut_geometry``'s end, projected on the line)."""
-    from shapely.geometry import Point
-    from shapely.ops import substring
-    g = g.copy()
-    out = []
-    for lid, full, cut in zip(g["lane_id"], g.geometry, g["cut_geometry"] if "cut_geometry" in g else [None] * len(g)):
-        if cut is None or full is None or (lid in runs_out and lid in runs_in) or cut != cut:
-            out.append(full)
-            continue
-        a = 0.0 if lid in runs_in else full.project(Point(cut.coords[0]))
-        b = full.length if lid in runs_out else full.project(Point(cut.coords[-1]))
-        out.append(substring(full, a, b) if b > a else full)
-    g["geometry"] = out
-    return g
+    return drawn
 
 
 @lru_cache(maxsize=1)
 def _strokes(gmns, source_db, connectors=False):
     """The lane table's lanes and lines as items (lanestyle.items.lane_strokes), each on its link (``edge_id``), and each link's width in metres.
-    ``connectors``: the lanes on their lines where the junction begins and duckOSM's lane connectors (SUMO's paths through the junction) as items
-    of the link they leave; else the lanes to their nodes and no connectors."""
+    ``connectors``: the lanes to their nodes and the turning connectors (SUMO's paths through the junction, :func:`_junction_plan`) as items
+    of the link they leave, each with its casing; else the lanes to their nodes and no connectors."""
     import lanestyle as ls
     from lanestyle import items
     from lanestyle.lines import _level
@@ -73,8 +50,7 @@ def _strokes(gmns, source_db, connectors=False):
     isconn = base["connector"].fillna(False).astype(bool) if "connector" in base else None
     g, conn_fc = base, None
     if connectors and isconn is not None and isconn.any():
-        runs_out, runs_in, drawn = _junction_plan(base, turns)
-        g = _trim_to_plan(base, runs_out, runs_in)          # a lane runs on to its node where traffic goes straight on into its lane number
+        drawn = _junction_plan(base, turns)                 # every lane to its node (the cut parts back); the drawn connectors under them
         keep = isconn & g["lane_id"].isin(drawn)
         cc, cp, _ = _colour_groups(g, s)
         conn_fc = items.connector_strokes(g[keep], g.loc[keep, cc].map(cp), s["tunnel_body"], ["lane_id"], dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
