@@ -82,8 +82,14 @@ def lane_items(roads):
             print(f"lanestyle.editor: {len(fs) - len(out)} of {len(fs)} items are on links that are no edge of the area: left out", flush=True)
         return out
 
-    roads["width_m"] = [width.get(e, np.nan) for e in roads["edge"].astype(str)]
-    roads.geometry = [lines.get(e, g) for e, g in zip(roads["edge"].astype(str), roads.geometry, strict=True)]
+    # the road's width and line from its edge with lanes, whichever edge draws it (2026-10-09: a road drawn by its walking-only direction had
+    # no lanes, so roadstyle's class width: 161748261#2r narrower than #1f, the same one car lane); the other direction runs the line backwards
+    from shapely.geometry import LineString
+    edges = roads["edge"].astype(str)
+    own = {r: e for r, e in zip(roads["road"], edges, strict=True) if e in width}
+    roads["width_m"] = [width.get(own.get(r), np.nan) for r in roads["road"]]
+    roads.geometry = [lines[e] if e in lines else (LineString(list(lines[own[r]].coords)[::-1]) if own.get(r) in lines else g)
+                      for e, r, g in zip(edges, roads["road"], roads.geometry, strict=True)]
     # the road's own items in roadstyle's one road layer (render items=, 2026-10-10): the car lanes unseen (picked and highlighted), every bus
     # and bike lane drawn on the road; the lane lines and marks on it; connectors unseen, not picked (route highlights)
     items = (on_edges(lane_fc, pick=True, seen=lambda f: f["properties"]["lane_id"] in special) + on_edges(line_fc) + on_edges(marks_fc)
