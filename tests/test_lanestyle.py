@@ -445,7 +445,7 @@ def test_a_footpath_has_no_arrow_and_a_tunnel_is_as_opaque_as_a_road(tmp_path):
     html = ls.render_lanes(*ls.from_gmns(gmns, modes=("driving", "walking"))).html
     lanes = _lane_props(html)
     arrowed = {p["edge_id"] for p in _page(html)[1]["lane marks"]}                       # the painted arrows are items of their lane's link
-    assert lanes["5_1"]["edge_id"] not in arrowed and lanes["1_1"]["edge_id"] in arrowed and lanes["2_1"]["edge_id"] in arrowed   # walk: none; roads: yes
+    assert arrowed and lanes["5_1"]["edge_id"] not in arrowed       # walk: none; roads: yes, where their link ends at a junction (at_junctions, 2026-10-10)
 
 
 def test_a_footway_join_is_read_from_duckosms_walking_connectors_not_made_here(tmp_path):

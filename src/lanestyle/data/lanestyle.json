@@ -35,7 +35,8 @@
     "arrows": {
       "length_m": 4,
       "end_m": 10,
-      "repeat_m": 60
+      "repeat_m": 0,
+      "at_junctions": true
     },
     "names": {
       "clear_m": 3

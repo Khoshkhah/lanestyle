@@ -124,7 +124,8 @@ def mark_strokes(lanes, turns, s, shifts, colour="#ffffff"):
     ``turns``) ``end_m`` before its end, then a plain arrow back along it every ``repeat_m``; a bus lane's BUS and a bike lane's bike from 15 m,
     then every ``repeat_m`` (a shared ``bus,bike`` lane: BUS, its bike 12 m after). Each mark lies on its lane's own line, shifted as the lane (``shifts``, :func:`lanestyle.items.lane_shifts`), so it
     is exactly where the lane is filled; one item per lane and stroke width (a MultiLineString; ``edge_id`` its link, ``order`` ARROW).
-    ``s``: ``lanes.arrows``. None when nothing is marked."""
+    ``s``: ``lanes.arrows``; with ``at_junctions`` (2026-10-10) a car lane gets its arrow only where its link ends at a junction: three or more
+    roads with car lanes at its end node (a two-way road counted once), not where a street just goes on into its next link. None when nothing is marked."""
     from shapely.geometry import LineString
 
     from lanestyle import strokes
@@ -139,6 +140,16 @@ def mark_strokes(lanes, turns, s, shifts, colour="#ffffff"):
     lanes = lanes.reset_index(drop=True)
     siblings = lanes.groupby("link_id")["lane_id"].apply(lambda x: [str(i) for i in x]).to_dict()
     back, every = float(s["end_m"]), float(s.get("repeat_m") or 0)
+    junction = None
+    if s.get("at_junctions"):
+        if not {"from_node_id", "to_node_id"} <= set(lanes.columns):
+            raise ValueError("lanestyle arrows at_junctions: the lanes have no from_node_id / to_node_id")
+        car = lanes[~lanes["use"].fillna("auto").astype(str).isin(["walk", "bike"])]
+        roads_at = {}
+        for a, b in set(zip(car["from_node_id"], car["to_node_id"])):
+            for n in (a, b):
+                roads_at.setdefault(n, set()).add(frozenset((a, b)))      # the two directions of a road: one road
+        junction = {n for n, rs in roads_at.items() if len(rs) >= 3}
     out = []
     for i, r in enumerate(lanes.itertuples()):
         use, ln, w = str(getattr(r, "use", "auto") or "auto"), r.geometry, float(r.width_m)
@@ -151,7 +162,7 @@ def mark_strokes(lanes, turns, s, shifts, colour="#ffffff"):
             if name == "bus" and "bike" in use.split(","):        # a bus lane bikes share: its bike 12 m after each BUS, where it fits (2026-10-10)
                 at += [(d + 12, "bike") for d, _ in list(at) if d + 12 + strokes.LENGTH / 2 <= n]
         else:
-            if n < strokes.LENGTH + 2:
+            if n < strokes.LENGTH + 2 or (junction is not None and r.to_node_id not in junction):
                 continue
             end = n - back if n >= 2 * back else n / 2
             at = [(end, _mark_name(_kinds(str(r.lane_id), siblings[r.link_id], turns_of) or {"thru"}))]
