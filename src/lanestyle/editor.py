@@ -103,7 +103,7 @@ def _strokes(gmns, source_db, connectors=False):
 
 def _with_casing(fc, conn, casing_m):
     """Each connector with a casing of its own: the same line, ``2 * casing_m`` wider, in the casing colour of its road's class (the editor's
-    palette, or ``LANESTYLE_CASING_COLOR``), ordered under every connector and lane of its link (ROAD_END)."""
+    palette, or ``LANESTYLE_CASING_COLOR``), flagged ``casing``: drawn with the road casings (rs.Overlay casing=True), under every lane."""
     import roadstyle as rs
     from lanestyle.items import ROAD_END
     if not fc:
@@ -115,7 +115,7 @@ def _with_casing(fc, conn, casing_m):
     missing = sorted({c for c in cls_of.values() if c not in pal}) if not test else []
     if missing:
         raise ValueError(f"lanestyle.editor: no casing colour for the road class(es) {missing} in roadstyle's palette")
-    under = [{**f, "properties": {**f["properties"], "order": ROAD_END, "color": test or pal[cls_of[f["properties"]["lane_id"]]]["casing"],
+    under = [{**f, "properties": {**f["properties"], "order": ROAD_END, "casing": True, "color": test or pal[cls_of[f["properties"]["lane_id"]]]["casing"],
                                     "width_m": f["properties"]["width_m"] + 2 * casing_m}} for f in fc["features"]]
     return {"type": "FeatureCollection", "features": under + fc["features"]}
 
@@ -147,7 +147,10 @@ def lane_items(roads):
     if marks_fc:
         overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
     if conn_fc:
-        overlays.append(rs.Overlay(on_edges(conn_fc), label="connectors", popup=[], **m))
+        under = [f for f in conn_fc["features"] if f["properties"].get("casing")]
+        over = [f for f in conn_fc["features"] if not f["properties"].get("casing")]
+        overlays.append(rs.Overlay(on_edges({"type": "FeatureCollection", "features": under}), label="connector casing", popup=[], casing=True, **m))
+        overlays.append(rs.Overlay(on_edges({"type": "FeatureCollection", "features": over}), label="connectors", popup=[], **m))
     # as the lane page: no road fill (the lanes are the surface), no roadstyle one-way chevrons or street names (lanestyle draws its own marks)
     from lanestyle.render import lane_settings
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing, as the lane page
