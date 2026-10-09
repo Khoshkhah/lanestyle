@@ -11,7 +11,7 @@ from shapely.geometry import LineString
 
 ARROWS = ("thru", "left", "right", "uturn", "left+thru", "thru+right", "left+right", "left+thru+right")
 STROKE = 0.4          # painted line width, m (2026-10-09: 0.3 too thin)
-LENGTH = 8.0          # arrow length, m (2026-10-09: 4 m too small, then 6 m: longer and thinner)
+LENGTH = 7.0          # arrow length, m (2026-10-09: 4 m too small, then 6 m: longer and thinner, 8 m; 2026-10-10: a little shorter)
 
 
 SHAFT = 0.3          # an arrow's shaft and branches, m (2026-10-09: 0.45 too thick)
