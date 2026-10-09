@@ -1,5 +1,5 @@
 """The lanes in roadstyle's level editor: the editor draws its roads as roadstyle's twin version (each direction its own casing and fill, in
-metres from the lanes, the fill in the car lane colour), the lanes, lane lines and marks on them as items, and the connectors as unseen items
+metres from the lanes, the fill in its lanes' colour), the lanes, lane lines and marks on them as items, and the connectors as unseen items
 for picking and showing a route (2026-10-10).
 
     LANESTYLE_GMNS=monaco_gmns.duckdb LANESTYLE_SOURCE_DB=monaco.duckdb \\
@@ -54,12 +54,15 @@ def _strokes(gmns, source_db, connectors=False):
     line = dict(zip(roads["edge_id"].astype(int), roads.geometry, strict=True))
     lines = {str(lk): (line[rd] if lk == rd else LineString(list(line[rd].coords)[::-1])) for lk, rd in road_of.items() if rd in line}
     marks_fc = mark_strokes(g, turns, s.get("arrows"), items.lane_shifts(g.reset_index(drop=True), road_of, float(s["centre_line_m"])))   # as the lane page
-    return lane_fc, line_fc, marks_fc, width, lines, conn_fc
+    # each link's fill: its lanes' colour where they share one (a bus or bike lane alone: the road's round end and the wedge at a bend in its
+    # colour, 2026-10-10), else the car lane colour
+    fill = {str(lk): (cs.iloc[0] if cs.nunique() == 1 else s["colors"]["auto"]) for lk, cs in g[colour_col].map(palette_colors).groupby(g["link_id"])}
+    return lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill
 
 
 def lane_items(roads):
     """The editor's hook (roadstyle.level_editor): the roads as roadstyle's twin version in metres (each direction its own casing and fill,
-    ``twin_casing`` "each", the fill in the car lane colour), at their lanes' width (``width_m``) on the lanes' line, with roadstyle's street
+    ``twin_casing`` "each", the fill in its lanes' colour where they share one, else the car lane colour), at their lanes' width (``width_m``) on the lanes' line, with roadstyle's street
     names; the lanes, lane lines and marks of ``LANESTYLE_GMNS`` as items of the editor's edges on them, and with ``LANESTYLE_CONNECTORS=1``
     its connectors as unseen, unclickable items (for route highlights); every item labelled with its road (``road``: one for both directions).
     The items of a link that is no edge of the editor's area are left out, and their count printed."""
@@ -69,7 +72,7 @@ def lane_items(roads):
     if not gmns:
         raise ValueError("lanestyle.editor.lane_items: set LANESTYLE_GMNS to the GMNS .duckdb (and LANESTYLE_SOURCE_DB to its duckOSM file)")
     on = os.environ.get("LANESTYLE_CONNECTORS") == "1"
-    lane_fc, line_fc, marks_fc, width, lines, conn_fc = _strokes(gmns, src, on)
+    lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill = _strokes(gmns, src, on)
     road_of = dict(zip(roads["edge"].astype(str), roads["road"].astype(str)))
 
     def on_edges(fc, seen=True):    # on the editor's edges, labelled with their road; unseen: a transparent colour, picked and highlighted only
@@ -81,6 +84,9 @@ def lane_items(roads):
         return {"type": "FeatureCollection", "features": out}
 
     roads["width_m"] = [width.get(e, np.nan) for e in roads["edge"].astype(str)]
+    from lanestyle.render import lane_settings
+    auto = lane_settings()["colors"]["auto"]
+    roads["lane_fill"] = [fill.get(e, auto) for e in roads["edge"].astype(str)]   # an edge without lanes: the car lane colour
     roads.geometry = [lines.get(e, g) for e, g in zip(roads["edge"].astype(str), roads.geometry, strict=True)]
     m = dict(edge_col="road_id", order_col="order", color_col="color", width_m_col="width_m", offset_m_col="offset_m")
     overlays = [rs.Overlay(on_edges(lane_fc), label="lanes", popup=["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
@@ -92,10 +98,11 @@ def lane_items(roads):
     from lanestyle.render import lane_settings
     s = lane_settings()
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing; roadstyle's street names, not its one-way chevrons (lanestyle's arrows instead);
-    # the fill in the car lane colour: past the lanes' flat ends its round end is the road's (2026-10-10)
-    kw = {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": float(s["casing_m"]), "casing_min_px": float(s["casing_min_px"]), "arrows": False}
+    # the fill in its lanes' colour (lane_fill): past the lanes' flat ends its round end is the road's (2026-10-10)
+    kw = {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": float(s["casing_m"]), "casing_min_px": float(s["casing_min_px"]), "arrows": False,
+          "color_by": "lane_fill", "colors": "self"}
     test = os.environ.get("LANESTYLE_CASING_COLOR")       # a casing colour of its own for inspecting (2026-10-10)
-    pal = {c: {**v, "fill": s["colors"]["auto"], **({"casing": test} if test else {})} for c, v in rs.palette_to_dict("amber").items()}
+    pal = {c: {**v, **({"casing": test} if test else {})} for c, v in rs.palette_to_dict("amber").items()}   # the fill: lane_fill
     # street names with a halo, growing with the zoom as the roads in metres do (2026-10-10)
     cfg = {"twin_casing": "each", "labels": {"color": "#333333", "halo_color": "#ffffff", "halo_width": 1.5,
                                               "size": [[15, 10], [17, 12], [19, 15], [21, 20], [22, 24]]}}

@@ -254,8 +254,10 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     drawn = gpd.GeoDataFrame({"edge": links[1:], "road": ["r" + x for x in links[1:]]}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
     overlays, kw = editor.lane_items(drawn)
     st = kw.pop("settings")
-    assert kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False, "palette": "lanestyle_editor"}
-    assert st["config"]["twin_casing"] == "each" and st["config"]["labels"]["halo_width"] > 0 and {v["fill"] for v in st["palettes"]["lanestyle_editor"].values()} == {"#a3a3a3"}
+    assert kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False, "palette": "lanestyle_editor",
+                  "color_by": "lane_fill", "colors": "self"}
+    assert st["config"]["twin_casing"] == "each" and st["config"]["labels"]["halo_width"] > 0
+    assert drawn["lane_fill"].str.startswith("#").all()                       # each road's fill: its lanes' colour (one shared), else the car lane's
     assert drawn["width_m"].notna().all()
     assert [o.label for o in overlays] in (["lanes", "lane lines"], ["lanes", "lane lines", "lane marks"])
     lanes_ov = overlays[0]
