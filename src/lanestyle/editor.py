@@ -77,35 +77,31 @@ def lane_items(roads):
     lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill, other_ids = _strokes(gmns, src, on)
     road_of = dict(zip(roads["edge"].astype(str), roads["road"].astype(str)))
 
-    def on_edges(fc, seen=lambda f: True):   # on the editor's edges, labelled with their road; unseen: a transparent colour, picked and highlighted only
-        fs = [{**f, "properties": {**f["properties"], "road_id": str(f["properties"]["edge_id"]), "road": road_of.get(str(f["properties"]["edge_id"])),
-                                   **({} if seen(f) else {"color": "rgba(0,0,0,0)"})}} for f in fc["features"]]
+    def on_edges(fc, pick=False, seen=lambda f: True):   # on the editor's edges (``edge``), labelled with their road; unseen: a transparent colour
+        fs = [{**f, "properties": {**f["properties"], "edge": str(f["properties"]["edge_id"]), "road": road_of.get(str(f["properties"]["edge_id"])),
+                                   "pick": pick, **({} if seen(f) else {"color": "rgba(0,0,0,0)"})}} for f in (fc or {"features": []})["features"]]
         out = [f for f in fs if f["properties"]["road"] is not None]
         if len(out) < len(fs):
             print(f"lanestyle.editor: {len(fs) - len(out)} of {len(fs)} items are on links that are no edge of the area: left out", flush=True)
-        return {"type": "FeatureCollection", "features": out}
+        return out
 
     roads["width_m"] = [width.get(e, np.nan) for e in roads["edge"].astype(str)]
     from lanestyle.render import lane_settings
     auto = lane_settings()["colors"]["auto"]
     roads["lane_fill"] = [fill.get(e, auto) for e in roads["edge"].astype(str)]   # an edge without lanes: the car lane colour
     roads.geometry = [lines.get(e, g) for e, g in zip(roads["edge"].astype(str), roads.geometry, strict=True)]
-    m = dict(edge_col="road_id", order_col="order", color_col="color", width_m_col="width_m", offset_m_col="offset_m")
-    # the lanes unseen under the roads' own look (2026-10-10: the road drawn as roadstyle's twin version, fill in its lanes' colour, lane lines and
-    # marks on it), picked and highlighted only; a lane of another colour than its direction's fill (a bus lane beside car lanes) drawn on it
-    other = lambda f: f["properties"]["lane_id"] in other_ids        # noqa: E731
-    overlays = [rs.Overlay(on_edges(lane_fc, seen=other), label="lanes", popup=["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
-                rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]
-    if marks_fc:
-        overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
-    if conn_fc:
-        overlays.append(rs.Overlay(on_edges(conn_fc, seen=lambda f: False), label="connectors", popup=[], **m))   # unseen, not clickable: kept for route highlights
+    # the road's own items in roadstyle's one road layer (render items=, 2026-10-10): the lanes unseen under the road's own look (twin version,
+    # fill in its lanes' colour), picked and highlighted, but a lane of another colour than its direction's fill (a bus lane beside car lanes)
+    # drawn on it; the lane lines and marks on the road; connectors unseen, not picked (route highlights)
+    items = (on_edges(lane_fc, pick=True, seen=lambda f: f["properties"]["lane_id"] in other_ids) + on_edges(line_fc) + on_edges(marks_fc)
+             + on_edges(conn_fc, seen=lambda f: False))
     from lanestyle.render import lane_settings
     s = lane_settings()
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing; roadstyle's street names, not its one-way chevrons (lanestyle's arrows instead);
     # the fill in its lanes' colour (lane_fill): past the lanes' flat ends its round end is the road's (2026-10-10)
     kw = {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": float(s["casing_m"]), "casing_min_px": float(s["casing_min_px"]), "arrows": False,
-          "color_by": "lane_fill", "colors": "self"}
+          "color_by": "lane_fill", "colors": "self", "items": {"type": "FeatureCollection", "features": items},
+          "items_popup": ["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"]}
     test = os.environ.get("LANESTYLE_CASING_COLOR")       # a casing colour of its own for inspecting (2026-10-10)
     pal = {c: {**v, **({"casing": test} if test else {})} for c, v in rs.palette_to_dict("amber").items()}   # the fill: lane_fill
     # street names with a halo, growing with the zoom as the roads in metres do (2026-10-10)
@@ -117,4 +113,4 @@ def lane_items(roads):
         tun = os.environ.get("LANESTYLE_TUNNEL_CASING")     # "dash,gap": a tunnel casing's two colours
         if tun:
             cfg.update(tunnel_palettes={"lanestyle_test": tun.split(",")}, tunnel_palette="lanestyle_test")
-    return overlays, kw
+    return [], kw

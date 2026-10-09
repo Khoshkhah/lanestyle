@@ -237,8 +237,9 @@ def test_an_outline_ends_flat_at_a_junction_and_round_where_its_road_goes_on():
 
 def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path, monkeypatch, capsys):
     """lanestyle.editor.lane_items (roadstyle's level editor ``--items``): the roads as roadstyle's twin version in metres (twin_casing "each",
-    the fill in the car lane colour), the lanes, lines and marks of the GMNS file as items of the editor's edges (a link is a duckOSM edge:
-    ``road_id`` = its ``edge_id``), each labelled with its road, no connectors; a link that is no edge of the editor is left out and said (2026-10-10)."""
+    the fill in its lanes' colour), the lanes, lines and marks of the GMNS file as the road's own items (render items=, no overlay; a link is a
+    duckOSM edge: ``edge`` = its ``edge_id``), each labelled with its road, the lanes picked, no connectors; a link that is no edge of the
+    editor is left out and said (2026-10-10)."""
     import geopandas as gpd
     from shapely.geometry import LineString
 
@@ -253,19 +254,18 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     monkeypatch.delenv("LANESTYLE_CONNECTORS", raising=False)
     drawn = gpd.GeoDataFrame({"edge": links[1:], "road": ["r" + x for x in links[1:]]}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
     overlays, kw = editor.lane_items(drawn)
-    st = kw.pop("settings")
-    assert kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False, "palette": "lanestyle_editor",
-                  "color_by": "lane_fill", "colors": "self"}
-    assert st["config"]["twin_casing"] == "each" and st["config"]["labels"]["halo_width"] > 0
+    st, items, popup = kw.pop("settings"), kw.pop("items")["features"], kw.pop("items_popup")
+    assert overlays == [] and kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False,
+                                     "palette": "lanestyle_editor", "color_by": "lane_fill", "colors": "self"}
+    assert st["config"]["twin_casing"] == "each" and st["config"]["labels"]["halo_width"] > 0 and "lane_id" in popup
     assert drawn["lane_fill"].str.startswith("#").all()                       # each road's fill: its lanes' colour (one shared), else the car lane's
     assert drawn["width_m"].notna().all()
-    assert [o.label for o in overlays] in (["lanes", "lane lines"], ["lanes", "lane lines", "lane marks"])
-    lanes_ov = overlays[0]
-    feats = lanes_ov.data["features"]
-    assert feats and all(f["properties"]["road_id"] == str(f["properties"]["edge_id"]) and f["properties"]["road_id"] in links[1:] for f in feats)
-    assert {f["properties"]["road_id"] for f in feats} == set(links[1:]) and lanes_ov.select == "item" and lanes_ov.edge_col == "road_id"
+    feats = [f for f in items if f["properties"]["pick"]]                    # the lanes: picked; lines and marks: not
+    assert feats and all(f["properties"]["edge"] == str(f["properties"]["edge_id"]) and f["properties"]["edge"] in links[1:] for f in feats)
+    assert {f["properties"]["edge"] for f in feats} == set(links[1:]) and all("lane_num" in f["properties"] for f in feats)
+    assert any(not f["properties"]["pick"] for f in items)
     *_, other = editor._strokes(str(gmns), str(src), False)
-    assert all(f["properties"]["road"] == "r" + f["properties"]["road_id"] for f in feats)
+    assert all(f["properties"]["road"] == "r" + f["properties"]["edge"] for f in items)
     # unseen (the road's own look) but a lane of another colour than its link's fill: drawn on it
     assert all((f["properties"]["color"] == "rgba(0,0,0,0)") == (f["properties"]["lane_id"] not in other) for f in feats)
     assert any(f["properties"]["color"] == "rgba(0,0,0,0)" for f in feats)
