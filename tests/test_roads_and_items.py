@@ -236,10 +236,10 @@ def test_an_outline_ends_flat_at_a_junction_and_round_where_its_road_goes_on():
 
 
 def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path, monkeypatch, capsys):
-    """lanestyle.editor.lane_items (roadstyle's level editor ``--items``): the roads as roadstyle's twin version in metres (twin_casing "each",
-    the fill in its lanes' colour), the lanes, lines and marks of the GMNS file as the road's own items (render items=, no overlay; a link is a
-    duckOSM edge: ``edge`` = its ``edge_id``), each labelled with its road, the lanes picked, no connectors; a link that is no edge of the
-    editor is left out and said (2026-10-10)."""
+    """lanestyle.editor.lane_items (roadstyle's level editor ``--items``): each road one line at its full width (single_line_classes), in the
+    car lane colour; the lanes, lines and marks of the GMNS file as the road's own items (render items=, no overlay; a link is a duckOSM edge:
+    ``edge`` = its ``edge_id``), each labelled with its road, the lanes picked, the bus and bike lanes drawn, the car lanes unseen, no
+    connectors; a link that is no edge of the editor is left out and said (2026-10-10)."""
     import geopandas as gpd
     from shapely.geometry import LineString
 
@@ -252,22 +252,23 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     links = sorted({str(k) for k in lanes[~lanes["connector"].fillna(False).astype(bool)]["link_id"]} if "connector" in lanes else {str(k) for k in lanes["link_id"]})
     monkeypatch.delenv("LANESTYLE_CASING_COLOR", raising=False)
     monkeypatch.delenv("LANESTYLE_CONNECTORS", raising=False)
-    drawn = gpd.GeoDataFrame({"edge": links[1:], "road": ["r" + x for x in links[1:]]}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
+    drawn = gpd.GeoDataFrame({"edge": links[1:], "road": ["r" + x for x in links[1:]], "highway": "residential"}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
     overlays, kw = editor.lane_items(drawn)
     st, items, popup = kw.pop("settings"), kw.pop("items")["features"], kw.pop("items_popup")
     assert overlays == [] and kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False,
-                                     "palette": "lanestyle_editor", "color_by": "lane_fill", "colors": "self"}
-    assert st["config"]["twin_casing"] == "each" and st["config"]["labels"]["halo_width"] > 0 and "lane_id" in popup
-    assert drawn["lane_fill"].str.startswith("#").all()                       # each road's fill: its lanes' colour (one shared), else the car lane's
+                                     "palette": "lanestyle_editor"}
+    assert set(drawn["highway"]) <= set(st["config"]["single_line_classes"]) and st["config"]["labels"]["halo_width"] > 0 and "lane_id" in popup
+    assert {v["fill"] for v in st["palettes"]["lanestyle_editor"].values()} == {"#a3a3a3"}      # the road in the car lane colour
     assert drawn["width_m"].notna().all()
     feats = [f for f in items if f["properties"]["pick"]]                    # the lanes: picked; lines and marks: not
     assert feats and all(f["properties"]["edge"] == str(f["properties"]["edge_id"]) and f["properties"]["edge"] in links[1:] for f in feats)
     assert {f["properties"]["edge"] for f in feats} == set(links[1:]) and all("lane_num" in f["properties"] for f in feats)
     assert any(not f["properties"]["pick"] for f in items)
-    *_, other = editor._strokes(str(gmns), str(src), False)
+    *_, special = editor._strokes(str(gmns), str(src), False)
     assert all(f["properties"]["road"] == "r" + f["properties"]["edge"] for f in items)
-    # unseen (the road's own look) but a lane of another colour than its link's fill: drawn on it
-    assert all((f["properties"]["color"] == "rgba(0,0,0,0)") == (f["properties"]["lane_id"] not in other) for f in feats)
+    # a bus or bike lane drawn on the road, a car lane unseen
+    assert all((f["properties"]["color"] == "rgba(0,0,0,0)") == (f["properties"]["lane_id"] not in special) for f in feats)
+    assert all(f["properties"]["lane_id"] in special for f in feats if f["properties"]["use"] in ("bus", "bike", "bus,bike"))
     assert any(f["properties"]["color"] == "rgba(0,0,0,0)" for f in feats)
     assert "left out" in capsys.readouterr().out
     # the casing's line is the lane page's (the middle of the carriageway), not the editor's: every edge left its dummy line
