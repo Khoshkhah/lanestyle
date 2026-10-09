@@ -289,3 +289,24 @@ def test_the_lane_line_fits_the_drawing():
     g = gpd.GeoDataFrame({"lane_id": ["a"], "cut_geometry": [LineString([(0, 0), (8, 0)])]}, geometry=[LineString([(0, 0), (10, 0)])], crs=4326)
     assert full_lanes(g, {"connectors": True}).geometry.iloc[0].length == 8
     assert full_lanes(g, {"connectors": False}).geometry.iloc[0].length == 10
+
+
+def test_a_connector_keeps_its_own_line(tmp_path):
+    """A connector takes its lane's attributes but never its lines: with connectors on it is drawn on its own path through the junction
+    (2026-10-10: it took its lane's geom_cut and was drawn along the lane)."""
+    import duckdb
+
+    from lanestyle.render import full_lanes
+    from test_lanestyle import _dbs
+    gmns, src = _dbs(tmp_path)
+    con = duckdb.connect(str(gmns))
+    con.execute("LOAD spatial; ALTER TABLE gmns_driving.lane ADD COLUMN geom_cut GEOMETRY")
+    con.execute("UPDATE gmns_driving.lane SET geom_cut = ST_GeomFromText('LINESTRING(18.001 59.30, 18.009 59.30)')")
+    con.execute("""CREATE TABLE gmns_driving.lane_connector(connector_id VARCHAR, mvmt_id VARCHAR, from_lane_id VARCHAR, to_lane_id VARCHAR, width DOUBLE,
+                   geom GEOMETRY)""")
+    con.execute("INSERT INTO gmns_driving.lane_connector VALUES ('1_1>2_1', 'm', '1_1', '2_1', 3.0, ST_GeomFromText('LINESTRING(18.009 59.30, 18.0102 59.3005)'))")
+    con.close()
+    lanes, _ = ls.from_gmns(gmns, source_db=src)
+    g = full_lanes(lanes, {"connectors": True})
+    c = g[g["connector"].fillna(False).astype(bool)].iloc[0]
+    assert list(c.geometry.coords) == [(18.009, 59.30), (18.0102, 59.3005)]

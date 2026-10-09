@@ -235,8 +235,8 @@ def _from_gmns_mode(gmns_db, mode, source_db):
         df["along_links"] = df["link_id"].map(route)
     df["connector"] = False
     if conn is not None and len(conn):           # a connector looks like the lane it leaves
-        lane_cols = [c for c in df.columns if c not in ("lane_id", "width_m", "name", "lane_num", "turn", "geom",
-                                                         "connector")]
+        lane_cols = [c for c in df.columns if c not in ("lane_id", "width_m", "name", "lane_num", "turn", "geom", "geom_cut", "geom_full",
+                                                         "connector")]      # not its lane's lines: a connector has its own (2026-10-10: drawn on its lane's)
         conn = conn.merge(df[["lane_id"] + lane_cols].rename(columns={"lane_id": "from_lane"}), on="from_lane", how="left")
         conn["connector"] = True
         df = pd.concat([df, conn], ignore_index=True)
