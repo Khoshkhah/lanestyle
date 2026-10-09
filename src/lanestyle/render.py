@@ -454,14 +454,24 @@ def _zebra_stripes(g, cr, st):
 
 
 def full_lanes(g, s):
-    """With connectors off (lanestyle.json "connectors": false), each lane on its FULL line to its nodes (GMNS ``geom_full``, duckOSM 2026-10-10)
-    instead of the line cut back for the connectors, so a junction shows no gap where a connector would be. Unchanged with connectors on, or
-    when the GMNS file has no full lines (an older duckOSM: then the gaps stay, and this says so)."""
-    if s.get("connectors", True):
+    """Each lane on the line that fits the drawing: with connectors off (lanestyle.json "connectors": false), its FULL line to its nodes,
+    so a junction shows no gap where a connector would be; with connectors on, its line where the junction begins, so the connectors (SUMO's
+    paths through it) meet it. duckOSM: ``geom`` to the nodes and ``geom_cut`` (``cut_geometry``) since 2026-10-10 (lanes from SUMO);
+    a file of that morning had ``geom`` cut and ``geom_full`` (``full_geometry``); an older one only cut lines (with connectors off the gaps
+    stay, and this says so)."""
+    import warnings
+    on = s.get("connectors", True)
+    if "cut_geometry" in g:                      # geom to the nodes, geom_cut at the junction
+        if not on:
+            return g
+        g = g.copy()
+        has = g["cut_geometry"].notna()
+        g.loc[has, "geometry"] = g.loc[has, "cut_geometry"]
+        return g
+    if on:
         return g
     if "full_geometry" not in g:
-        import warnings
-        warnings.warn("lanestyle: connectors are off but this GMNS file has no lane.geom_full (duckOSM before 2026-10-10): "
+        warnings.warn("lanestyle: connectors are off but this GMNS file has no full lane lines (duckOSM before 2026-10-10): "
                       "the lanes stop short of the junctions; rebuild the GMNS file", stacklevel=2)
         return g
     g = g.copy()

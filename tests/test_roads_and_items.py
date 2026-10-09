@@ -277,3 +277,15 @@ def test_the_road_line_is_the_middle_of_the_carriageway_whatever_its_kerb_lanes_
     roads = items.link_roads(g, 0.14, 0.15)
     ys = [(c[1] - y0) / m for c in roads.geometry.iloc[0].coords]
     assert abs(sum(ys) / len(ys) - (-0.875)) < 0.05          # edges +1.5 and -3.25: their middle
+
+
+def test_the_lane_line_fits_the_drawing():
+    """full_lanes (duckOSM 2026-10-10, lanes from SUMO): with connectors on, each lane on its line where the junction begins (geom_cut), so
+    SUMO's connectors meet it; with them off, on its line to the node (geom)."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.render import full_lanes
+    g = gpd.GeoDataFrame({"lane_id": ["a"], "cut_geometry": [LineString([(0, 0), (8, 0)])]}, geometry=[LineString([(0, 0), (10, 0)])], crs=4326)
+    assert full_lanes(g, {"connectors": True}).geometry.iloc[0].length == 8
+    assert full_lanes(g, {"connectors": False}).geometry.iloc[0].length == 10

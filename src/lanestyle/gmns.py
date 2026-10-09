@@ -188,7 +188,10 @@ def _from_gmns_mode(gmns_db, mode, source_db):
         if "edge_ref" in link_cols:                  # duckOSM's readable id, <osm_id>#<n><f|r>: the same way and number = twins
             lvl += ", k.edge_ref"
         join = f"LEFT JOIN {src}.{mode}.edges e ON e.edge_id = l.link_id" if lvl.startswith(", e.") else ""
-        full = ", ST_AsWKB(l.geom_full) AS geom_full" if "geom_full" in _cols(con, g, "lane") else ""      # duckOSM 2026-10-10: the line before the connector cut
+        cols_ = _cols(con, g, "lane")
+        # duckOSM's lane lines: geom to the nodes and geom_cut where SUMO ends the lane at its junction (the connectors meet it); a file
+        # of the morning of 2026-10-10 had geom cut and geom_full to the nodes
+        full = (", ST_AsWKB(l.geom_cut) AS geom_cut" if "geom_cut" in cols_ else "") + (", ST_AsWKB(l.geom_full) AS geom_full" if "geom_full" in cols_ else "")
         df = con.execute(
             f"SELECT l.lane_id::VARCHAR AS lane_id, k.facility_type AS highway, l.width AS width_m, "
             f"  COALESCE(l.allowed_uses, 'auto') AS use, "
@@ -239,8 +242,9 @@ def _from_gmns_mode(gmns_db, mode, source_db):
         df = pd.concat([df, conn], ignore_index=True)
     for c in [c for c in ("link_id", "reverse_link_id", "from_node_id", "to_node_id", "osm_id", "along_link_id") if c in df]:
         df[c] = df[c].astype("Int64")
-    if "geom_full" in df:                        # each lane's full line to its nodes (``full_geometry``), for drawing without connectors; a connector has none
-        df["full_geometry"] = gpd.GeoSeries.from_wkb(df.pop("geom_full").map(lambda b: bytes(b) if b is not None and b == b else None), crs=4326).values
+    for col, name in (("geom_full", "full_geometry"), ("geom_cut", "cut_geometry")):   # the other line of each lane (see above); a connector has none
+        if col in df:
+            df[name] = gpd.GeoSeries.from_wkb(df.pop(col).map(lambda b: bytes(b) if b is not None and b == b else None), crs=4326).values
     geom = gpd.GeoSeries.from_wkb(df.pop("geom").map(bytes), crs=4326)
     return gpd.GeoDataFrame(df, geometry=geom, crs=4326), turns
 
