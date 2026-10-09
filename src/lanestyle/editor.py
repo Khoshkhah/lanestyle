@@ -63,8 +63,8 @@ def _strokes(gmns, source_db, connectors=False):
 def lane_items(roads):
     """The editor's hook (roadstyle.level_editor): the roads as roadstyle's twin version in metres (each direction its own casing and fill,
     ``twin_casing`` "each", the fill in its lanes' colour where they share one, else the car lane colour), at their lanes' width (``width_m``) on the lanes' line, with roadstyle's street
-    names; the lanes, lane lines and marks of ``LANESTYLE_GMNS`` as items of the editor's edges on them, and with ``LANESTYLE_CONNECTORS=1``
-    its connectors as unseen, unclickable items (for route highlights); every item labelled with its road (``road``: one for both directions).
+    names; the lane lines and marks of ``LANESTYLE_GMNS`` as items of the editor's edges on them, its lanes as unseen items (picked and highlighted
+    only), and with ``LANESTYLE_CONNECTORS=1`` its connectors as unseen, unclickable items (for route highlights); every item labelled with its road (``road``: one for both directions).
     The items of a link that is no edge of the editor's area are left out, and their count printed."""
     import roadstyle as rs
 
@@ -89,7 +89,9 @@ def lane_items(roads):
     roads["lane_fill"] = [fill.get(e, auto) for e in roads["edge"].astype(str)]   # an edge without lanes: the car lane colour
     roads.geometry = [lines.get(e, g) for e, g in zip(roads["edge"].astype(str), roads.geometry, strict=True)]
     m = dict(edge_col="road_id", order_col="order", color_col="color", width_m_col="width_m", offset_m_col="offset_m")
-    overlays = [rs.Overlay(on_edges(lane_fc), label="lanes", popup=["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
+    # the lanes unseen under the roads' own look (2026-10-10: the road drawn as roadstyle's twin version, fill in its lanes' colour, lane lines and
+    # marks on it); a lane is picked and highlighted only
+    overlays = [rs.Overlay(on_edges(lane_fc, seen=False), label="lanes", popup=["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
                 rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]
     if marks_fc:
         overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
