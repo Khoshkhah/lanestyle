@@ -123,6 +123,13 @@ def lane_items(roads):
     if marks_fc:
         overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
     if conn_fc:
+        # a connector (and its casing) on the LOWER of its two roads (fill number), so it never covers the lanes of the road it turns into or out of
+        fill = dict(zip(roads["edge"].astype(str), roads["fill_level"]))
+        def lower(f):
+            a, b = str(f["properties"]["edge_id"]), f["properties"]["lane_id"].split(">")[1].rsplit("_", 1)[0]
+            e = b if b in fill and a in fill and fill[b] < fill[a] else a
+            return {**f, "properties": {**f["properties"], "edge_id": int(e)}}
+        conn_fc = {"type": "FeatureCollection", "features": [lower(f) for f in conn_fc["features"]]}
         under = [f for f in conn_fc["features"] if f["properties"].get("casing")]
         over = [f for f in conn_fc["features"] if not f["properties"].get("casing")]
         overlays.append(rs.Overlay(on_edges({"type": "FeatureCollection", "features": under}), label="connector casing", popup=[], casing=True, **m))
