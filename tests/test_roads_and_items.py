@@ -236,8 +236,9 @@ def test_an_outline_ends_flat_at_a_junction_and_round_where_its_road_goes_on():
 
 
 def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path, monkeypatch, capsys):
-    """lanestyle.editor.lane_items (roadstyle's level editor ``--items``): the lanes and lines of the GMNS file as items of the editor's edges (a link is a duckOSM
-    edge: ``road_id`` = its ``edge_id``), no connectors, the edges at their lanes' width; a link that is no edge of the editor is left out and said."""
+    """lanestyle.editor.lane_items (roadstyle's level editor ``--items``): the roads as roadstyle's twin version in metres (twin_casing "each"),
+    the lanes of the GMNS file as unseen items of the editor's edges under them (a link is a duckOSM edge: ``road_id`` = its ``edge_id``),
+    each labelled with its road, no connectors; a link that is no edge of the editor is left out and said (2026-10-10)."""
     import geopandas as gpd
     from shapely.geometry import LineString
 
@@ -248,15 +249,18 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     editor._strokes.cache_clear()
     lanes, _ = ls.from_gmns(gmns, source_db=src)
     links = sorted({str(k) for k in lanes[~lanes["connector"].fillna(False).astype(bool)]["link_id"]} if "connector" in lanes else {str(k) for k in lanes["link_id"]})
-    drawn = gpd.GeoDataFrame({"edge": links[1:], "road": links[1:]}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
+    monkeypatch.delenv("LANESTYLE_CASING_COLOR", raising=False)
+    monkeypatch.delenv("LANESTYLE_CONNECTORS", raising=False)
+    drawn = gpd.GeoDataFrame({"edge": links[1:], "road": ["r" + x for x in links[1:]]}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
     overlays, kw = editor.lane_items(drawn)
-    assert kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "road_fill": False, "arrows": False, "labels": False} and drawn["width_m"].notna().all()
-    lanes_ov, lines_ov = overlays[:2]
-    assert [o.label for o in overlays[2:]] in ([], ["lane marks"])           # the marks, as on the lane page
+    assert kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False, "labels": False,
+                  "settings": {"config": {"twin_casing": "each"}}} and drawn["width_m"].notna().all()
+    assert [o.label for o in overlays] == ["lanes"]
+    lanes_ov = overlays[0]
     feats = lanes_ov.data["features"]
     assert feats and all(f["properties"]["road_id"] == str(f["properties"]["edge_id"]) and f["properties"]["road_id"] in links[1:] for f in feats)
     assert {f["properties"]["road_id"] for f in feats} == set(links[1:]) and lanes_ov.select == "item" and lanes_ov.edge_col == "road_id"
-    assert all(f["properties"]["road_id"] in links[1:] for f in lines_ov.data["features"])
+    assert all(f["properties"]["road"] == "r" + f["properties"]["road_id"] and f["properties"]["color"] == "rgba(0,0,0,0)" for f in feats)
     assert "left out" in capsys.readouterr().out
     # the casing's line is the lane page's (the middle of the carriageway), not the editor's: every edge left its dummy line
     assert all(g.coords[0] != (0.0, 0.0) for g in drawn.geometry)
