@@ -264,7 +264,12 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     feats = lanes_ov.data["features"]
     assert feats and all(f["properties"]["road_id"] == str(f["properties"]["edge_id"]) and f["properties"]["road_id"] in links[1:] for f in feats)
     assert {f["properties"]["road_id"] for f in feats} == set(links[1:]) and lanes_ov.select == "item" and lanes_ov.edge_col == "road_id"
-    assert all(f["properties"]["road"] == "r" + f["properties"]["road_id"] and f["properties"]["color"] == "rgba(0,0,0,0)" for f in feats)   # unseen: the road's own look
+    lane_fc, *_, fill = editor._strokes(str(gmns), str(src), False)
+    own = {f["properties"]["lane_id"]: f["properties"]["color"] for f in lane_fc["features"]}
+    assert all(f["properties"]["road"] == "r" + f["properties"]["road_id"] for f in feats)
+    # unseen (the road's own look) but a lane of another colour than its link's fill: drawn on it
+    assert all((f["properties"]["color"] == "rgba(0,0,0,0)") == (own[f["properties"]["lane_id"]] == fill[f["properties"]["road_id"]]) for f in feats)
+    assert any(f["properties"]["color"] == "rgba(0,0,0,0)" for f in feats)
     assert "left out" in capsys.readouterr().out
     # the casing's line is the lane page's (the middle of the carriageway), not the editor's: every edge left its dummy line
     assert all(g.coords[0] != (0.0, 0.0) for g in drawn.geometry)

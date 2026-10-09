@@ -64,7 +64,7 @@ def lane_items(roads):
     """The editor's hook (roadstyle.level_editor): the roads as roadstyle's twin version in metres (each direction its own casing and fill,
     ``twin_casing`` "each", the fill in its lanes' colour where they share one, else the car lane colour), at their lanes' width (``width_m``) on the lanes' line, with roadstyle's street
     names; the lane lines and marks of ``LANESTYLE_GMNS`` as items of the editor's edges on them, its lanes as unseen items (picked and highlighted
-    only), and with ``LANESTYLE_CONNECTORS=1`` its connectors as unseen, unclickable items (for route highlights); every item labelled with its road (``road``: one for both directions).
+    only) but for a lane of another colour than its direction's fill (a bus lane beside car lanes), drawn on it, and with ``LANESTYLE_CONNECTORS=1`` its connectors as unseen, unclickable items (for route highlights); every item labelled with its road (``road``: one for both directions).
     The items of a link that is no edge of the editor's area are left out, and their count printed."""
     import roadstyle as rs
 
@@ -75,9 +75,9 @@ def lane_items(roads):
     lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill = _strokes(gmns, src, on)
     road_of = dict(zip(roads["edge"].astype(str), roads["road"].astype(str)))
 
-    def on_edges(fc, seen=True):    # on the editor's edges, labelled with their road; unseen: a transparent colour, picked and highlighted only
+    def on_edges(fc, seen=lambda f: True):   # on the editor's edges, labelled with their road; unseen: a transparent colour, picked and highlighted only
         fs = [{**f, "properties": {**f["properties"], "road_id": str(f["properties"]["edge_id"]), "road": road_of.get(str(f["properties"]["edge_id"])),
-                                   **({} if seen else {"color": "rgba(0,0,0,0)"})}} for f in fc["features"]]
+                                   **({} if seen(f) else {"color": "rgba(0,0,0,0)"})}} for f in fc["features"]]
         out = [f for f in fs if f["properties"]["road"] is not None]
         if len(out) < len(fs):
             print(f"lanestyle.editor: {len(fs) - len(out)} of {len(fs)} items are on links that are no edge of the area: left out", flush=True)
@@ -90,13 +90,14 @@ def lane_items(roads):
     roads.geometry = [lines.get(e, g) for e, g in zip(roads["edge"].astype(str), roads.geometry, strict=True)]
     m = dict(edge_col="road_id", order_col="order", color_col="color", width_m_col="width_m", offset_m_col="offset_m")
     # the lanes unseen under the roads' own look (2026-10-10: the road drawn as roadstyle's twin version, fill in its lanes' colour, lane lines and
-    # marks on it); a lane is picked and highlighted only
-    overlays = [rs.Overlay(on_edges(lane_fc, seen=False), label="lanes", popup=["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
+    # marks on it), picked and highlighted only; a lane of another colour than its direction's fill (a bus lane beside car lanes) drawn on it
+    other = lambda f: f["properties"]["color"] != fill.get(str(f["properties"]["edge_id"]))        # noqa: E731
+    overlays = [rs.Overlay(on_edges(lane_fc, seen=other), label="lanes", popup=["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
                 rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]
     if marks_fc:
         overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
     if conn_fc:
-        overlays.append(rs.Overlay(on_edges(conn_fc, seen=False), label="connectors", popup=[], **m))   # unseen, not clickable: kept for route highlights
+        overlays.append(rs.Overlay(on_edges(conn_fc, seen=lambda f: False), label="connectors", popup=[], **m))   # unseen, not clickable: kept for route highlights
     from lanestyle.render import lane_settings
     s = lane_settings()
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing; roadstyle's street names, not its one-way chevrons (lanestyle's arrows instead);
