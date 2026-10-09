@@ -56,8 +56,10 @@ def _strokes(gmns, source_db, connectors=False):
     marks_fc = mark_strokes(g, turns, s.get("arrows"), items.lane_shifts(g.reset_index(drop=True), road_of, float(s["centre_line_m"])))   # as the lane page
     # each link's fill: its lanes' colour where they share one (a bus or bike lane alone: the road's round end and the wedge at a bend in its
     # colour, 2026-10-10), else the car lane colour
-    fill = {str(lk): (cs.iloc[0] if cs.nunique() == 1 else s["colors"]["auto"]) for lk, cs in g[colour_col].map(palette_colors).groupby(g["link_id"])}
-    return lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill
+    base = g[colour_col].map(palette_colors)             # a lane's own colour, before a tunnel's blend
+    fill = {str(lk): (cs.iloc[0] if cs.nunique() == 1 else s["colors"]["auto"]) for lk, cs in base.groupby(g["link_id"])}
+    other = {str(i) for i, c, lk in zip(g["lane_id"], base, g["link_id"], strict=True) if c != fill[str(lk)]}   # a lane not of its link's fill colour
+    return lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill, other
 
 
 def lane_items(roads):
@@ -72,7 +74,7 @@ def lane_items(roads):
     if not gmns:
         raise ValueError("lanestyle.editor.lane_items: set LANESTYLE_GMNS to the GMNS .duckdb (and LANESTYLE_SOURCE_DB to its duckOSM file)")
     on = os.environ.get("LANESTYLE_CONNECTORS") == "1"
-    lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill = _strokes(gmns, src, on)
+    lane_fc, line_fc, marks_fc, width, lines, conn_fc, fill, other_ids = _strokes(gmns, src, on)
     road_of = dict(zip(roads["edge"].astype(str), roads["road"].astype(str)))
 
     def on_edges(fc, seen=lambda f: True):   # on the editor's edges, labelled with their road; unseen: a transparent colour, picked and highlighted only
@@ -91,7 +93,7 @@ def lane_items(roads):
     m = dict(edge_col="road_id", order_col="order", color_col="color", width_m_col="width_m", offset_m_col="offset_m")
     # the lanes unseen under the roads' own look (2026-10-10: the road drawn as roadstyle's twin version, fill in its lanes' colour, lane lines and
     # marks on it), picked and highlighted only; a lane of another colour than its direction's fill (a bus lane beside car lanes) drawn on it
-    other = lambda f: f["properties"]["color"] != fill.get(str(f["properties"]["edge_id"]))        # noqa: E731
+    other = lambda f: f["properties"]["lane_id"] in other_ids        # noqa: E731
     overlays = [rs.Overlay(on_edges(lane_fc, seen=other), label="lanes", popup=["road", "name", "lane_id", "lane_num", "use", "width_m", "link_id"], select="item", **m),
                 rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]
     if marks_fc:
