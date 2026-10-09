@@ -13,8 +13,10 @@ import numpy as np
 
 
 @lru_cache(maxsize=1)
-def _strokes(gmns, source_db):
-    """The lane table's lanes and lines as items (lanestyle.items.lane_strokes), each on its link (``edge_id``), and each link's width in metres."""
+def _strokes(gmns, source_db, connectors=False):
+    """The lane table's lanes and lines as items (lanestyle.items.lane_strokes), each on its link (``edge_id``), and each link's width in metres.
+    ``connectors``: the lanes on their lines where the junction begins and duckOSM's lane connectors (SUMO's paths through the junction) as items
+    of the link they leave; else the lanes to their nodes and no connectors."""
     import lanestyle as ls
     from lanestyle import items
     from lanestyle.lines import _level
@@ -23,11 +25,16 @@ def _strokes(gmns, source_db):
 
     s = lane_settings()
     lanes, turns = ls.from_gmns(gmns, source_db=source_db)
-    g = full_lanes(_roads_only(lanes), {**s, "connectors": False}).copy()       # the editor shows no connectors: the lanes to their nodes
+    g = full_lanes(_roads_only(lanes), {**s, "connectors": connectors}).copy()     # off: the lanes to their nodes; on: to the junction
     g["use"] = g["use"].fillna("auto") if "use" in g else "auto"
     g["width_m"] = _widths(g, s)
-    if "connector" in g:                                  # the editor shows the roads: no connectors
-        g = g[~g["connector"].fillna(False).astype(bool)]
+    isconn = g["connector"].fillna(False).astype(bool) if "connector" in g else None
+    conn_fc = None
+    if connectors and isconn is not None and isconn.any():
+        cc, cp, _ = _colour_groups(g, s)
+        conn_fc = items.connector_strokes(g[isconn], g.loc[isconn, cc].map(cp), s["tunnel_body"], ["lane_id"], dict(zip(g["lane_id"], g["width_m"])), level_of=_level)
+    if isconn is not None:                                # the lanes and their lines without the connectors
+        g = g[~isconn]
     colour_col, palette_colors, _ = _colour_groups(g, s)
     roads = items.link_roads(g, float(s["casing_m"]), float(s["centre_line_m"]))
     road_of = roads.attrs["road_of"]
@@ -43,7 +50,7 @@ def _strokes(gmns, source_db):
     from shapely.geometry import LineString
     line = dict(zip(roads["edge_id"].astype(int), roads.geometry, strict=True))
     lines = {str(lk): (line[rd] if lk == rd else LineString(list(line[rd].coords)[::-1])) for lk, rd in road_of.items() if rd in line}
-    return lane_fc, line_fc, marks_fc, width, lines
+    return lane_fc, line_fc, marks_fc, width, lines, conn_fc
 
 
 def lane_items(roads):
@@ -54,7 +61,8 @@ def lane_items(roads):
     gmns, src = os.environ.get("LANESTYLE_GMNS"), os.environ.get("LANESTYLE_SOURCE_DB")
     if not gmns:
         raise ValueError("lanestyle.editor.lane_items: set LANESTYLE_GMNS to the GMNS .duckdb (and LANESTYLE_SOURCE_DB to its duckOSM file)")
-    lane_fc, line_fc, marks_fc, width, lines = _strokes(gmns, src)
+    on = os.environ.get("LANESTYLE_CONNECTORS") == "1"    # SUMO's paths through the junctions, the lanes cut where the junction begins
+    lane_fc, line_fc, marks_fc, width, lines, conn_fc = _strokes(gmns, src, on)
     edges = set(roads["edge"].astype(str))
 
     def on_edges(fc):
@@ -71,6 +79,8 @@ def lane_items(roads):
                 rs.Overlay(on_edges(line_fc), label="lane lines", popup=[], **m)]
     if marks_fc:
         overlays.append(rs.Overlay(on_edges(marks_fc), label="lane marks", popup=[], **m))
+    if conn_fc:
+        overlays.append(rs.Overlay(on_edges(conn_fc), label="connectors", popup=[], **m))
     # as the lane page: no road fill (the lanes are the surface), no roadstyle one-way chevrons or street names (lanestyle draws its own marks)
     from lanestyle.render import lane_settings
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing, as the lane page
