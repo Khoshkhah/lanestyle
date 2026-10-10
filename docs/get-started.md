@@ -30,7 +30,7 @@ duckosm levels monaco.duckdb
 ```python
 import lanestyle as ls
 
-m = ls.lane_page("monaco.levels", "monaco_gmns.duckdb", "monaco.duckdb", tunnel_control=True)
+m = ls.lane_page("monaco.levels", "monaco_gmns.duckdb", "monaco.duckdb")
 m.save("monaco.html")
 ```
 
@@ -40,8 +40,8 @@ The page is one HTML file that opens offline. Zoom in: lanes and their colours s
 lines, zebras and sidewalks from zoom 17, arrows and BUS / bike marks from 18. Click a lane to see it;
 click a road for its name, class and modes.
 
-Extra keywords go to roadstyle's [`render_edges`](https://khoshkhah.github.io/roadstyle/reference/parameters/):
-`basemap=`, `name=`, `street_view_key=` and the rest.
+The page is blank, just the lanes: no base map, no Roads box, no Tunnels slider. Extra keywords go to roadstyle's [`render_edges`](https://khoshkhah.github.io/roadstyle/reference/parameters/):
+`basemap=` (a base map under the lanes), `filter_control=True`, `tunnel_control=True`, `name=` and the rest.
 
 ## Next
 

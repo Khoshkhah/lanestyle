@@ -14,5 +14,5 @@ python lane_page.py AREA GMNS_DB SOURCE_DB OUT.html [--connectors]
 | `OUT.html` | the page |
 | `--connectors` | also the lane connectors, unseen |
 
-The page has the Tunnels box on (`tunnel_control=True`). The editor with the same drawing:
+The page is blank, just the lanes. The editor with the same drawing:
 `roadstyle-levels edit AREA --items lanestyle.editor:lane_items` ([the editor](../guides/editor.md)).

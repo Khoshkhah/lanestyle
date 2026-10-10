@@ -27,11 +27,11 @@ duckosm levels area.duckdb                        # area.levels: the drawing ord
 ```python
 import lanestyle as ls
 
-m = ls.lane_page("area.levels", "area_gmns.duckdb", "area.duckdb", tunnel_control=True)
+m = ls.lane_page("area.levels", "area_gmns.duckdb", "area.duckdb")
 m.save("lanes.html")
 ```
 
-Extra keywords go to `roadstyle.render_edges` (e.g. `name=`, `basemap=`, `street_view_key=`).
+The page is blank by default (no base map, no Roads box, no Tunnels slider); extra keywords go to `roadstyle.render_edges` (`basemap=`, `filter_control=True`, `tunnel_control=True`, `name=` …).
 `connectors=True` adds the lane connectors through the junctions, unseen (route highlights).
 The same drawing in roadstyle's editor: `LANESTYLE_GMNS=area_gmns.duckdb LANESTYLE_SOURCE_DB=area.duckdb
 roadstyle-levels edit area.levels --items lanestyle.editor:lane_items`.

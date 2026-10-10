@@ -13,7 +13,7 @@ roadstyle `WebMap` (`.save(path)`, `.html`).
 | `gmns` | duckOSM's GMNS file (`duckosm gmns DB -o GMNS`) |
 | `source_db` | the duckOSM database both were made from (the OSM tags of the sidewalks) |
 | `connectors` | also the lane connectors through junctions, unseen (route highlights) |
-| `**kw` | to roadstyle's `render_edges`: `basemap=`, `name=`, `tunnel_control=`, `street_view_key=` … |
+| `**kw` | to roadstyle's `render_edges`. By default the page is blank (`basemap="blank"`, no Roads box): `basemap=`, `filter_control=True`, `tunnel_control=True`, `name=` … |
 
 ## `lanestyle.editor.lane_items(roads, gmns=None, source_db=None, connectors=None)`
 
