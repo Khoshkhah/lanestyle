@@ -64,4 +64,3 @@ The tests build a tiny GMNS db, source db and level area in `tmp_path`, so they 
   strings in the page; the page's feature ids are roadstyle's, never `link_id`.
 - Lane 1 is the leftmost lane in the direction of travel. The centre line sits at lane 1's left edge:
   right for right-hand traffic only.
-- The docs site (`docs/`) still describes the old `render_lanes` page: rewrite before publishing.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lanestyle"
-version = "0.2.1"
+version = "0.3.0"
 description = "Lane-level road maps on roadstyle: every road as wide as its lanes, with bus and bike lanes, lane lines, turn arrows, zebra crossings and sidewalks, from duckOSM's GMNS lanes"
 readme = "README.md"
 requires-python = ">=3.10"
