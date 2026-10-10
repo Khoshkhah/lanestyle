@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lanestyle"
 version = "0.2.1"
-description = "Lane-level road maps on roadstyle: every lane drawn at its real width, with lane lines, turns and a click-to-see-connectivity view, from a lane table or a duckOSM GMNS database"
+description = "Lane-level road maps on roadstyle: every road as wide as its lanes, with bus and bike lanes, lane lines, turn arrows, zebra crossings and sidewalks, from duckOSM's GMNS lanes"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -23,7 +23,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS",
   "Topic :: Scientific/Engineering :: Visualization",
 ]
-dependencies = ["roadstyle>=0.15.0", "geopandas", "shapely>=2", "duckdb", "pandas", "pyyaml"]
+dependencies = ["roadstyle>=0.21.0", "geopandas", "shapely>=2", "duckdb", "pandas"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
