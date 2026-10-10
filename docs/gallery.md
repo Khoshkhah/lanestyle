@@ -1,6 +1,6 @@
 # Gallery
 
-<p class="lead">Monaco, from the lane page. Click a picture's place on the <a href="maps/monaco.html">live map</a>.</p>
+<p class="lead">Monaco, from the lane page. Every place is on the <a href="maps/monaco.html">live map</a> too.</p>
 
 ## Boulevard Albert 1er
 
