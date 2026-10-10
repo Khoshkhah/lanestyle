@@ -112,6 +112,7 @@ def lane_items(roads, gmns=None, source_db=None, connectors=None):
 
     def on_edges(fc, pick=False, seen=lambda f: True):   # on the editor's edges (``edge``), labelled with their road; unseen: a transparent colour
         fs = [{**f, "properties": {**f["properties"], "edge": str(f["properties"]["edge_id"]), "road": road_of.get(str(f["properties"]["edge_id"])),
+                                   **({"link_id": str(f["properties"]["link_id"])} if f["properties"].get("link_id") is not None else {}),   # a BIGINT: the page rounds a number
                                    "pick": pick, **({} if seen(f) else {"color": "rgba(0,0,0,0)"})}} for f in (fc or {"features": []})["features"]]
         out = [f for f in fs if f["properties"]["road"] is not None]
         if len(out) < len(fs):
