@@ -40,4 +40,4 @@ duckOSM = "https://github.com/Khoshkhah/duckOSM"
 where = ["src"]
 
 [tool.setuptools.package-data]
-lanestyle = ["data/*.json", "styles/themes/*.yaml"]
+lanestyle = ["data/*.json"]

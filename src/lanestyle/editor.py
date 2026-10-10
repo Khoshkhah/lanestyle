@@ -44,7 +44,7 @@ def _strokes(gmns, source_db, connectors=False):
     import lanestyle as ls
     from lanestyle import items
     from lanestyle.arrows import mark_strokes
-    from lanestyle.render import _colour_groups, _roads_only, _widths, lane_settings
+    from lanestyle.settings import _colour_groups, _roads_only, _widths, lane_settings
 
     s = lane_settings()
     lanes, turns = ls.from_gmns(gmns, source_db=source_db)
@@ -130,7 +130,7 @@ def lane_items(roads, gmns=None, source_db=None, connectors=None):
     # and bike lane drawn on the road; the lane lines and marks on it; connectors unseen, not picked (route highlights)
     items = (on_edges(lane_fc, pick=True, seen=lambda f: f["properties"]["lane_id"] in special) + on_edges(line_fc) + on_edges(zebra_fc) + on_edges(side_fc) + on_edges(marks_fc)
              + on_edges(conn_fc, seen=lambda f: False))
-    from lanestyle.render import lane_settings
+    from lanestyle.settings import lane_settings
     s = lane_settings()
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing; roadstyle's street names, not its one-way chevrons (lanestyle's arrows instead);
     kw = {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": float(s["casing_m"]), "casing_min_px": float(s["casing_min_px"]), "arrows": False,

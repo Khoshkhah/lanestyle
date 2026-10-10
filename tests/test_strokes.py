@@ -127,3 +127,22 @@ def test_sidewalks_come_from_the_ways_tags_only_on_their_side():
         fc = sidewalk_strokes(g, {5: 5}, {"5": ln}, {"5": 8.0}, {9: {"sidewalk": "right"}}, st, "#f0cb8c")
         (f,) = fc["features"]
         assert f["properties"]["offset_m"] == sign * 5.0 and f["properties"]["width_m"] == 2.0 and f["properties"]["minzoom"] == 17
+
+
+def test_a_forking_lane_gets_the_arrow_its_movement_codes_say():
+    """docs/design/lane_arrows.md, on the strokes: a lane whose moves are all ``diverge`` has the arrow of the turn letters of their codes
+    (``turn``, from duckOSM's ``mvmt_code``): left + thru is the combined arrow (a branch more); thru alone stays the plain one."""
+    import geopandas as gpd
+    import pandas as pd
+    from shapely.geometry import LineString
+
+    from lanestyle.arrows import mark_strokes
+    m = 1 / 111320
+    g = gpd.GeoDataFrame({"link_id": [1], "lane_id": ["1_1"], "use": ["auto"], "width_m": [3.25]},
+                         geometry=[LineString([(18.0, 59.0), (18.0, 59.0 + 40 * m)])], crs=4326)
+    s = {"length_m": 8, "end_m": 10, "repeat_m": 0}
+    def n(turn):
+        t = pd.DataFrame({"from_lane": ["1_1", "1_1"], "to_lane": ["2_1", "3_1"], "type": ["diverge", "diverge"], "turn": turn})
+        return sum(len(f["geometry"]["coordinates"]) for f in (mark_strokes(g, t, s, [0.0]) or {"features": []})["features"])
+    plain = n([None, None])
+    assert plain > 0 and n(["thru", "left"]) > plain and n(["thru", "thru"]) == plain
