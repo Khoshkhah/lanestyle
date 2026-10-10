@@ -14,6 +14,28 @@ from functools import lru_cache
 import numpy as np
 
 
+def to_junctions(g):
+    """Each lane's line cut where its junction begins (2026-10-10, plain junctions: no lane, lane line or arrow inside a junction, as on a
+    real road): duckOSM's line to the nodes (``geometry``), cut at the points along it where SUMO's line (``cut_geometry``) starts and ends,
+    so the lane stays on its road (SUMO's own line can lie a little to the side). A lane without a cut line, or whose cut is under 1 m long,
+    as it is. The connectors (SUMO's paths through the junction) are not drawn."""
+    if "cut_geometry" not in g:
+        return g
+    from shapely.geometry import Point
+    from shapely.ops import substring
+    out = []
+    for ln, cut in zip(g.geometry, g["cut_geometry"], strict=True):
+        if cut is None or cut != cut or ln is None or cut.is_empty:
+            out.append(ln)
+            continue
+        a, b = ln.project(Point(cut.coords[0])), ln.project(Point(cut.coords[-1]))
+        piece = substring(ln, a, b) if b > a else None
+        out.append(piece if piece is not None and piece.geom_type == "LineString" and piece.length * 111320 >= 1.0 else ln)
+    g = g.copy()
+    g.geometry = out
+    return g
+
+
 @lru_cache(maxsize=1)
 def _strokes(gmns, source_db, connectors=False):
     """The lane table's lanes, lines and marks as items (lanestyle.items.lane_strokes, arrows.mark_strokes), each on its link (``edge_id``), and
@@ -37,6 +59,7 @@ def _strokes(gmns, source_db, connectors=False):
                                           dict(zip(g["lane_id"], g["width_m"])))
     if isconn is not None:                                # the lanes without the connectors
         g, base = g[~isconn.values], base[~isconn.values]
+    g = to_junctions(g)                                   # the lanes, their lines and marks stop where a junction begins (base: the road to the nodes)
     colour_col, palette_colors, _ = _colour_groups(g, s)
     # the road (its casing) on the lanes' full lines, to the nodes, whatever is drawn: SUMO cuts a road's two directions at different
     # places, so the middle of their cut lines is skewed and short (2026-10-10, connectors on: casings and lanes did not match)
