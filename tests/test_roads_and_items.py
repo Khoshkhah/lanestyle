@@ -331,3 +331,25 @@ def test_a_connector_keeps_its_own_line(tmp_path):
     g = full_lanes(lanes, {"connectors": True})
     c = g[g["connector"].fillna(False).astype(bool)].iloc[0]
     assert list(c.geometry.coords) == [(18.009, 59.30), (18.0102, 59.3005)]
+
+
+def test_the_lane_page_is_the_editors_drawing_without_its_panel(tmp_path):
+    """lanestyle.lane_page (2026-10-10): the roads of a level area as the editor draws them (one line at the lanes' width, its levels), the
+    lanes, lines and marks as the roads' own items (render items=), a road popup and no editor panel."""
+    import geopandas as gpd
+    import pytest
+    pytest.importorskip("scipy")
+    from roadstyle.level_area import make_area
+    from shapely.geometry import LineString
+
+    import lanestyle as ls
+    gmns, src = _dbs(tmp_path)
+    a, b, c = (18.00, 59.30), (18.01, 59.30), (18.02, 59.30)
+    edges = gpd.GeoDataFrame({"edge_id": [8121729169906061189, 2, 3], "highway": ["secondary", "tertiary", "secondary"],
+                              "name": ["Main St", "Bridge Rd", "Main St"], "oneway": [True, True, True], "driving": [True] * 3,
+                              "cycling": [False] * 3, "lanes": [2, 1, 1], "modes": ["driving"] * 3},
+                             geometry=[LineString([a, b]), LineString([b, c]), LineString([b, a])], crs=4326)
+    make_area(edges, tmp_path / "area", id_col="edge_id")
+    html = ls.lane_page(tmp_path / "area", str(gmns), str(src)).html
+    assert "roads-simple" in html and '"lane_id"' in html and "1_2" in html         # the one road layer, its lane items
+    assert "lv-apply" not in html and "Lanes" in html                               # no editor panel; the page's own name

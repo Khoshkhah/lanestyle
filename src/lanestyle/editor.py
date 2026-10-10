@@ -59,7 +59,7 @@ def _strokes(gmns, source_db, connectors=False):
     return lane_fc, line_fc, marks_fc, width, lines, conn_fc, special
 
 
-def lane_items(roads):
+def lane_items(roads, gmns=None, source_db=None, connectors=None):
     """The editor's hook (roadstyle.level_editor): each road one line at its full width (``width_m``, both directions; config
     ``single_line_classes``: every class) on the lanes' line, in the car lane colour, with roadstyle's street names; the road's own items
     (render ``items=``): every bus, bike and bus + bike lane drawn in its colour, the car lanes unseen (picked and highlighted only), the lane
@@ -67,10 +67,11 @@ def lane_items(roads):
     for both directions). The items of a link that is no edge of the editor's area are left out, and their count printed."""
     import roadstyle as rs
 
-    gmns, src = os.environ.get("LANESTYLE_GMNS"), os.environ.get("LANESTYLE_SOURCE_DB")
+    # the files: given (lanestyle.lane_page), else the environment (the editor's hook gets only the roads)
+    gmns, src = gmns or os.environ.get("LANESTYLE_GMNS"), source_db or os.environ.get("LANESTYLE_SOURCE_DB")
     if not gmns:
-        raise ValueError("lanestyle.editor.lane_items: set LANESTYLE_GMNS to the GMNS .duckdb (and LANESTYLE_SOURCE_DB to its duckOSM file)")
-    on = os.environ.get("LANESTYLE_CONNECTORS") == "1"
+        raise ValueError("lanestyle.editor.lane_items: give gmns (or set LANESTYLE_GMNS) to the GMNS .duckdb, and source_db (LANESTYLE_SOURCE_DB) to its duckOSM file")
+    on = connectors if connectors is not None else os.environ.get("LANESTYLE_CONNECTORS") == "1"
     lane_fc, line_fc, marks_fc, width, lines, conn_fc, special = _strokes(gmns, src, on)
     road_of = dict(zip(roads["edge"].astype(str), roads["road"].astype(str)))
 
