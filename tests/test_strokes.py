@@ -106,3 +106,24 @@ def test_a_painted_zebra_is_white_strokes_along_the_road_from_zoom_17():
     (ax, ay), (bx, by) = fs[0]["geometry"]["coordinates"]
     assert abs((bx - ax) * k - 4) < 0.05 and abs(by - ay) * 111320 < 0.05            # along the road, as long as the crossing is wide
     assert zebra_strokes(g, cr.assign(painted=False), {"stripe_m": 0.5, "gap_m": 0.5}, "#ffffff") is None
+
+
+def test_sidewalks_come_from_the_ways_tags_only_on_their_side():
+    """2026-10-10: a sidewalk OSM tags on a street (right / left / both, sidewalk[:side]:width) is a strip just outside the street's width on
+    that side of the way, so on the other side of a link that runs against the way; separate, no and a bare yes give none."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    from lanestyle.items import _sidewalk_sides, sidewalk_strokes
+    assert _sidewalk_sides({"sidewalk": "both"}, 2.0) == {"left": 2.0, "right": 2.0}
+    assert _sidewalk_sides({"sidewalk": "right", "sidewalk:right:width": "3.5"}, 2.0) == {"right": 3.5}
+    assert _sidewalk_sides({"sidewalk:left": "yes", "sidewalk:right": "separate"}, 2.0) == {"left": 2.0}
+    for t in ({"sidewalk": "separate"}, {"sidewalk": "no"}, {"sidewalk": "yes"}, {}):
+        assert _sidewalk_sides(t, 2.0) == {}
+    ln = LineString([(18.0, 59.3), (18.001, 59.3)])
+    st = {"width_m": 2.0, "minzoom": 17}
+    for ref, sign in (("9#1f", 1), ("9#1r", -1)):
+        g = gpd.GeoDataFrame({"link_id": [5], "osm_id": [9], "edge_ref": [ref], "reverse_link_id": [None]}, geometry=[ln], crs=4326)
+        fc = sidewalk_strokes(g, {5: 5}, {"5": ln}, {"5": 8.0}, {9: {"sidewalk": "right"}}, st, "#f0cb8c")
+        (f,) = fc["features"]
+        assert f["properties"]["offset_m"] == sign * 5.0 and f["properties"]["width_m"] == 2.0 and f["properties"]["minzoom"] == 17

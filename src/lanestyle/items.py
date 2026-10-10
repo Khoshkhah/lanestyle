@@ -481,3 +481,73 @@ def zebra_strokes(g, cr, st, colour):
         {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in ln.coords]},
          "properties": {"edge_id": link, "order": ZEBRA, "color": colour, "width_m": thick, "offset_m": 0.0, "minzoom": float(st.get("minzoom", 17))}}
         for ln, link in zip(back, links, strict=True)]}
+
+
+def _sidewalk_sides(tags, default_m):
+    """The sides of an OSM way with a sidewalk in its tags (``sidewalk`` / ``sidewalk:both|left|right``), each with its width in metres
+    (``sidewalk[:side]:width``, else ``default_m``): ``{"left": m, "right": m}``, sides of the way's own direction. ``separate`` (its own way,
+    drawn as one), ``no`` and a bare ``yes`` (which side?) give none: nothing is guessed."""
+    def num(v):
+        try:
+            return float(str(v).split()[0].replace(",", "."))
+        except (TypeError, ValueError, IndexError):
+            return None
+    tags = tags or {}
+    have = {"left": False, "right": False}
+    main = tags.get("sidewalk")
+    if main in ("both", "left", "right"):
+        for side in ("left", "right"):
+            have[side] = main in ("both", side)
+    if tags.get("sidewalk:both") in ("yes",):
+        have = {"left": True, "right": True}
+    for side in ("left", "right"):
+        if tags.get(f"sidewalk:{side}") in ("yes",):
+            have[side] = True
+        elif tags.get(f"sidewalk:{side}") in ("no", "separate"):
+            have[side] = False
+    return {side: (num(tags.get(f"sidewalk:{side}:width")) or num(tags.get("sidewalk:both:width")) or num(tags.get("sidewalk:width")) or default_m)
+            for side, on in have.items() if on}
+
+
+def sidewalk_strokes(g, road_of, lines, width, tags, st, colour):
+    """The sidewalks OSM tags on a street (2026-10-10; ``sidewalk=right/left/both``, not ``separate``, which is its own way) as LINE items:
+    a strip in ``colour`` along the street's drawn line (``lines``: link -> the road's line in that link's direction), just outside its full
+    width (``width``: link -> metres), so its outline reads as the kerb; ``st["width_m"]`` wide unless tagged, shown from ``st["minzoom"]``. It
+    stops where the street's lanes stop at a junction (their ``cut_geometry``), so it never runs across a crossing street. One strip per side
+    per road, on the road's own link (``road_of``: link -> road). ``g``: the lanes (``link_id``, ``osm_id``, ``edge_ref``, ``cut_geometry``);
+    ``tags``: OSM way id -> its tags. None without any."""
+    import pandas as pd
+    from shapely.geometry import Point
+    from shapely.ops import substring
+
+    info = g.drop_duplicates("link_id").set_index("link_id")
+    cut = {}                                                   # link -> (share cut at its start, at its end) of its lanes, the most
+    if "cut_geometry" in g:
+        for lk, ln, c in zip(g["link_id"], g.geometry, g["cut_geometry"], strict=True):
+            if c is None or c != c or ln is None or c.is_empty or ln.length == 0:
+                continue
+            a, b = ln.project(Point(c.coords[0]), normalized=True), 1 - ln.project(Point(c.coords[-1]), normalized=True)
+            s0, s1 = cut.get(int(lk), (0.0, 0.0))
+            cut[int(lk)] = (max(s0, a), max(s1, b))
+    fs = []
+    for lk, rd in road_of.items():
+        if int(lk) != int(rd) or int(lk) not in info.index or str(lk) not in lines or str(lk) not in width:
+            continue                                          # one strip per road: on its own link
+        row = info.loc[int(lk)]
+        back = str(row.get("edge_ref") or "").endswith("r")   # the link runs against its OSM way: the way's right is its left
+        rev = row.get("reverse_link_id")
+        a, b = cut.get(int(lk), (0.0, 0.0))
+        if pd.notna(rev) and int(rev) in cut:  # the other direction's cut, turned round
+            ra, rb = cut[int(rev)]
+            a, b = max(a, rb), max(b, ra)
+        if a + b >= 0.95:
+            continue
+        line = substring(lines[str(lk)], a, 1 - b, normalized=True)
+        if line.geom_type != "LineString" or line.length == 0:
+            continue
+        for side, m in _sidewalk_sides(tags.get(int(row["osm_id"])) if pd.notna(row.get("osm_id")) else None, float(st["width_m"])).items():
+            sign = (1 if side == "right" else -1) * (-1 if back else 1)
+            fs.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in line.coords]},
+                       "properties": {"edge_id": int(lk), "order": LANE, "color": colour, "width_m": m, "minzoom": float(st.get("minzoom", 17)),
+                                      "offset_m": sign * (float(width[str(lk)]) / 2 + m / 2), "kind": "sidewalk"}})
+    return {"type": "FeatureCollection", "features": fs} if fs else None

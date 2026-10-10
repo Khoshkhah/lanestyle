@@ -29,6 +29,10 @@
       "gap_m": 0.5,
       "minzoom": 17
     },
+    "sidewalk": {
+      "width_m": 2.0,
+      "minzoom": 17
+    },
     "arrows": {
       "length_m": 4,
       "end_m": 10,

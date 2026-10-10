@@ -77,10 +77,21 @@ def _strokes(gmns, source_db, connectors=False):
     line = dict(zip(roads["edge_id"].astype(int), roads.geometry, strict=True))
     lines = {str(lk): (line[rd] if lk == rd else LineString(list(line[rd].coords)[::-1])) for lk, rd in road_of.items() if rd in line}
     zebra_fc = items.zebra_strokes(g, lanes.attrs.get("crossings"), s["zebra"], (s["lines"] or {}).get("color", "#f2f2f2")) if s.get("zebra") else None
+    side_fc = None
+    if s.get("sidewalk") and source_db and "osm_id" in base:   # the sidewalks OSM tags on a street (not its own way): the ways' tags, from duckOSM
+        import duckdb
+        con = duckdb.connect(str(source_db), read_only=True)
+        try:
+            raw = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'raw' AND table_name = 'ways'").fetchone()[0]
+            ids = sorted({int(x) for x in base["osm_id"].dropna()})
+            tags = dict(con.execute("SELECT osm_id, tags FROM raw.ways WHERE osm_id IN (SELECT unnest(?::BIGINT[]))", [ids]).fetchall()) if ids and raw else {}
+        finally:
+            con.close()
+        side_fc = items.sidewalk_strokes(base, road_of, lines, width, tags, s["sidewalk"], s["colors"]["walk"])   # base: the lanes' full lines
     marks_fc = mark_strokes(g, turns, s.get("arrows"), items.lane_shifts(g.reset_index(drop=True), road_of, float(s["centre_line_m"])))   # as the lane page
     # the lanes drawn on the road: every bus, bike and bus + bike lane (the road itself is in the car lane colour, 2026-10-10)
     special = {str(i) for i, u in zip(g["lane_id"], g["use"].astype(str), strict=True) if u.startswith("bus") or u == "bike"}
-    return lane_fc, line_fc, marks_fc, width, lines, conn_fc, zebra_fc, special
+    return lane_fc, line_fc, marks_fc, width, lines, conn_fc, zebra_fc, side_fc, special
 
 
 def lane_items(roads, gmns=None, source_db=None, connectors=None):
@@ -96,7 +107,7 @@ def lane_items(roads, gmns=None, source_db=None, connectors=None):
     if not gmns:
         raise ValueError("lanestyle.editor.lane_items: give gmns (or set LANESTYLE_GMNS) to the GMNS .duckdb, and source_db (LANESTYLE_SOURCE_DB) to its duckOSM file")
     on = connectors if connectors is not None else os.environ.get("LANESTYLE_CONNECTORS") == "1"
-    lane_fc, line_fc, marks_fc, width, lines, conn_fc, zebra_fc, special = _strokes(gmns, src, on)
+    lane_fc, line_fc, marks_fc, width, lines, conn_fc, zebra_fc, side_fc, special = _strokes(gmns, src, on)
     road_of = dict(zip(roads["edge"].astype(str), roads["road"].astype(str)))
 
     def on_edges(fc, pick=False, seen=lambda f: True):   # on the editor's edges (``edge``), labelled with their road; unseen: a transparent colour
@@ -117,7 +128,7 @@ def lane_items(roads, gmns=None, source_db=None, connectors=None):
                       for e, r, g in zip(edges, roads["road"], roads.geometry, strict=True)]
     # the road's own items in roadstyle's one road layer (render items=, 2026-10-10): the car lanes unseen (picked and highlighted), every bus
     # and bike lane drawn on the road; the lane lines and marks on it; connectors unseen, not picked (route highlights)
-    items = (on_edges(lane_fc, pick=True, seen=lambda f: f["properties"]["lane_id"] in special) + on_edges(line_fc) + on_edges(zebra_fc) + on_edges(marks_fc)
+    items = (on_edges(lane_fc, pick=True, seen=lambda f: f["properties"]["lane_id"] in special) + on_edges(line_fc) + on_edges(zebra_fc) + on_edges(side_fc) + on_edges(marks_fc)
              + on_edges(conn_fc, seen=lambda f: False))
     from lanestyle.render import lane_settings
     s = lane_settings()
