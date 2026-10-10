@@ -79,5 +79,6 @@ def mark_strokes(lanes, turns, s, shifts, colour="#ffffff"):
                 by_w.setdefault(f["properties"]["width_m"], []).append(f["geometry"]["coordinates"])
         for wm, parts in by_w.items():
             out.append({"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": parts},
-                        "properties": {"edge_id": int(r.link_id), "order": 3, "color": colour, "width_m": wm, "offset_m": 0.0, "lane_id": str(r.lane_id)}})
+                        "properties": {"edge_id": int(r.link_id), "order": 3, "color": colour, "width_m": wm, "offset_m": 0.0, "lane_id": str(r.lane_id),
+                                       **({"minzoom": float(s["minzoom"])} if s.get("minzoom") is not None else {})}})   # 2026-10-10: specks zoomed out
     return {"type": "FeatureCollection", "features": out} if out else None

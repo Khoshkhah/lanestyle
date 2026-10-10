@@ -237,7 +237,8 @@ def lane_strokes(g, colours, land, popup, road_of, centre_m, lines, trim_m, on_r
                 return
             ln, x = MultiLineString(parts), 0.0
         line_fs.append({"type": "Feature", "geometry": _line(ln),
-                        "properties": {"edge_id": int(link), "order": LINE, "color": lines["color"], "width_m": width, "offset_m": x, "t": kind}})
+                        "properties": {"edge_id": int(link), "order": LINE, "color": lines["color"], "width_m": width, "offset_m": x, "t": kind,
+                                       **({"minzoom": float(lines["minzoom"])} if lines.get("minzoom") is not None else {})}})   # 2026-10-10: specks zoomed out
 
     use = g["use"] if "use" in g else None
     for lk, grp in g.groupby("link_id", sort=True):

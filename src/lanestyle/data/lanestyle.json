@@ -22,7 +22,8 @@
       "width_m": 0.15,
       "dash_m": 3.0,
       "gap_m": 9.0,
-      "color": "#f2f2f2"
+      "color": "#f2f2f2",
+      "minzoom": 17
     },
     "zebra": {
       "stripe_m": 0.5,
@@ -37,7 +38,8 @@
       "length_m": 4,
       "end_m": 10,
       "repeat_m": 0,
-      "at_junctions": true
+      "at_junctions": true,
+      "minzoom": 18
     },
     "names": {
       "clear_m": 3
