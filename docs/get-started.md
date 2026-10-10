@@ -1,91 +1,51 @@
 # Get started
 
-<p class="lead">Install lanestyle, draw Monaco from the bundled sample, then your own area.</p>
+<p class="lead">From an OpenStreetMap extract to a lane-level page: three duckOSM commands and one call.</p>
 
 ## Install
 
-Python 3.10 or newer. roadstyle 0.15 or newer (line widths in metres, the casing and fill numbers, items attached to roads), geopandas, shapely 2,
-duckdb and pandas come with it.
+Python 3.10 or newer. lanestyle brings roadstyle (0.21 or newer), geopandas, shapely 2, duckdb and pandas;
+duckOSM makes the data (it needs [SUMO](https://eclipse.dev/sumo/)'s `netconvert` for the lanes).
 
 ```bash
-pip install lanestyle
+pip install lanestyle "duckosm[levels]"
 ```
 
-??? note "Developing lanestyle"
-
-    ```bash
-    git clone https://github.com/Khoshkhah/lanestyle.git && cd lanestyle
-    pip install -e ".[dev]"
-    pytest -q
-    ```
-
-    The tests build a tiny GMNS database on the fly, so they need no data.
-
-## A first map, no data needed
-
-The repo ships Monaco's lanes as GeoParquet, read straight from duckOSM's GMNS export
-(`docs/data/monaco_lanes.parquet` and `monaco_turns.parquet`, 1.3 MB together):
-
-```python
-import geopandas as gpd
-import pandas as pd
-import lanestyle as ls
-
-lanes = gpd.read_parquet("docs/data/monaco_lanes.parquet")
-turns = pd.read_parquet("docs/data/monaco_turns.parquet")
-ls.render_lanes(lanes, turns=turns).save("monaco.html")
-```
-
-Open `monaco.html`. Zoom past 16 and the lanes take their real width, 3.25 m each; click one.
-
-<iframe src="../maps/monaco.html" loading="lazy" title="Monaco, lane by lane" class="ls-demo" id="monaco-demo" allowfullscreen></iframe>
-<p class="ls-demo-bar"><a href="#" onclick="document.getElementById('monaco-demo').requestFullscreen(); return false;">Full screen</a> ·
-<a href="../maps/monaco.html" target="_blank" rel="noopener">Open in a new tab</a></p>
-
-The page is a plain file: it opens without a server, and only the base-map tiles come from the
-internet. `ls.write_serve("monaco.html")` drops a `serve.py` next to it for when you want a URL
-(`python serve.py 8080`).
-
-## Your own area
-
-Lanes come from [duckOSM](https://github.com/Khoshkhah/duckOSM), which places each lane of an
-OpenStreetMap road and works out the lane-to-lane turns, as a GMNS database:
+## Make the data
 
 ```bash
-pip install duckosm
-curl -LO https://download.geofabrik.de/europe/monaco-latest.osm.pbf
-duckosm build --pbf monaco-latest.osm.pbf -o monaco.duckdb -m driving
-duckosm gmns monaco.duckdb -m driving -o monaco_gmns.duckdb
+duckosm build --pbf monaco-latest.osm.pbf -o monaco.duckdb -m driving -m walking -m cycling
+duckosm gmns monaco.duckdb -o monaco_gmns.duckdb
+duckosm levels monaco.duckdb
 ```
+
+| step | makes | what is in it |
+|---|---|---|
+| `build` | `monaco.duckdb` | the roads of every mode, routable, with the OSM tags |
+| `gmns` | `monaco_gmns.duckdb` | the lanes (count, width, use: car, bus, bike), the turns between them and where each junction begins (from SUMO), the crossings |
+| `levels` | `monaco.levels/` | the drawing order of the roads: which is over which, their ends. Your fixes go here too ([the editor](guides/editor.md)) |
+
+## Draw it
 
 ```python
 import lanestyle as ls
 
-lanes, turns = ls.from_gmns("monaco_gmns.duckdb")
-ls.render_lanes(lanes, turns=turns).save("monaco.html")
+m = ls.lane_page("monaco.levels", "monaco_gmns.duckdb", "monaco.duckdb", tunnel_control=True)
+m.save("monaco.html")
 ```
 
-One file is enough: duckOSM writes each link's bridge, tunnel and `layer` into the GMNS file. Two
-optional extras, from the duckOSM database the GMNS file was made from (`source_db=`): the area's
-boundary outline, and the levels for GMNS files made before duckOSM wrote them. The whole chain, step
-by step: [From OSM to lanes](pipeline.md).
+or from the repo: `python lane_page.py monaco.levels monaco_gmns.duckdb monaco.duckdb monaco.html`.
 
-Or from the shell, with the script in the repo:
+The page is one HTML file that opens offline. Zoom in: lanes and their colours show at every zoom, lane
+lines, zebras and sidewalks from zoom 17, arrows and BUS / bike marks from 18. Click a lane to see it;
+click a road for its name, class and modes.
 
-```bash
-python render_lanes.py monaco_gmns.duckdb monaco.html
-```
+Extra keywords go to roadstyle's [`render_edges`](https://khoshkhah.github.io/roadstyle/reference/parameters/):
+`basemap=`, `name=`, `street_view_key=` and the rest.
 
-## What you see
+## Next
 
-| | |
-|---|---|
-| **Lanes** | one line per lane, exactly its width in metres from zoom 16 on, roadstyle's class widths below; coloured by road class (the `mono` palette) |
-| **Lane lines** | dashed dividers between lanes of one direction, a solid centre line between the two directions; they stop at junctions |
-| **Levels** | tunnels under the street, bridges over it, in the order of the OSM `layer` tag |
-| **Labels** | the street name once per road; each lane's turns are in its popup (`type_label_zoom` draws them along the lane) |
-| **Bus, bike and walk lanes** | painted over the palette; their colours are rows in the Roads box, which lists the lane uses and Bridges / Tunnels, not the road classes. Footpaths and on-road bike lanes are drawn narrow; `modes=("driving", "walking")` puts the roads and their sidewalks on one map |
-| **Click a lane** | it turns red with a popup (road, lane, turns, width, level, ids); the lanes it leads into turn green, U-turns purple |
-| **Connectors** | the curves that join a lane to the next through a junction, drawn like lanes and coloured with them on a click |
-
-Every look with its code: [the gallery](gallery.md). Every keyword: [Python API](reference/python.md).
+- [Lanes and markings](guides/lanes-and-markings.md): what is drawn, and why that way.
+- [Junctions, zebras and sidewalks](guides/junctions-zebras-sidewalks.md).
+- [Fix the drawing in the editor](guides/editor.md): a road under the wrong one, an end that looks wrong.
+- [Settings](guides/settings.md): colours, widths, dashes.

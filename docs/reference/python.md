@@ -1,75 +1,34 @@
 # Python API
 
-<p class="lead">Six functions. The two you need are `from_gmns` and `render_lanes`.</p>
+<p class="lead">One call makes the page; the rest is what it is built from.</p>
 
-```python
-import lanestyle as ls
-```
+## `lane_page(area, gmns, source_db, connectors=False, **kw)`
 
-## `render_lanes(lanes, turns=None, palette="mono", settings=None, **kwargs)`
+The lanes of `gmns` on the roads of the level `area`, as roadstyle's level editor draws them: a
+roadstyle `WebMap` (`.save(path)`, `.html`).
 
-Draw a [lane table](../guides/lane-table.md) as one roadstyle map and return roadstyle's `WebMap`
-(`.save(path)`, `.html`).
-
-| Parameter | Meaning |
+| argument | what |
 |---|---|
-| `lanes` | GeoDataFrame, one row per lane |
-| `turns` | DataFrame `from_lane`, `to_lane`, optional `type`: clicks, type labels, `turns_in` / `turns_out` in the popup |
-| `palette` | a roadstyle palette: `mono` (default, so the lane colours stand out), `carto`, `highsat` |
-| `settings` | roadstyle settings, plus a `"lanes"` key for lanestyle's own ([Settings](settings.md)) |
-| `**kwargs` | anything `roadstyle.render_edges` takes: `basemap`, `boundary`, `overlays`, `name`, `view_3d`, … |
+| `area` | the level area folder (`duckosm levels DB` makes `DB.levels`) |
+| `gmns` | duckOSM's GMNS file (`duckosm gmns DB -o GMNS`) |
+| `source_db` | the duckOSM database both were made from (the OSM tags of the sidewalks) |
+| `connectors` | also the lane connectors through junctions, unseen (route highlights) |
+| `**kw` | to roadstyle's `render_edges`: `basemap=`, `name=`, `tunnel_control=`, `street_view_key=` … |
 
-It calls `roadstyle.render_edges` with `width_m_col="width_m"`, `width_m_zoom`, `casing_m`, `casing_min_px` (1: the casing is never under a pixel) and the
-popup columns, then appends its own scripts: the lane lines, the mode-group rows in the Roads
-box, the click script and, when asked for, the type labels.
+## `lanestyle.editor.lane_items(roads, gmns=None, source_db=None, connectors=None)`
 
-```python
-import roadstyle as rs
-ls.render_lanes(lanes, turns=turns,
-                boundary=ls.read_boundary("monaco.duckdb"),       # the area's dashed outline
-                overlays=[rs.Overlay(route_gdf, label="route")],  # a lane route on top
-                basemap="dark_matter").save("lanes.html")
-```
+The editor's hook (`roadstyle-levels edit AREA --items lanestyle.editor:lane_items`; the files from
+`LANESTYLE_GMNS` / `LANESTYLE_SOURCE_DB` there): it sets each road's width and line from its lanes and
+returns `(overlays, render_edges keywords)` with the items. `lane_page` calls it.
 
-## `from_gmns(gmns_db, mode="driving", source_db=None, modes=None)`
+## Reading GMNS
 
-Read `gmns_<mode>.lane` / `.link` / `.movement` (and `.lane_connector` when present) from a duckOSM
-GMNS database into `(lanes, turns)`.
+- `from_gmns(gmns_db, mode="driving", source_db=None, modes=None)` → `(lanes, turns)`: one row per lane
+  (`lane_id`, `link_id`, `lane_num`, `use`, `width_m`, `turn`, the link's tags, `geometry` to the nodes,
+  `cut_geometry` where SUMO's junction begins) and one per turn (`from_lane`, `to_lane`, `type`).
+  `modes=("driving", "walking", "cycling")` reads several; cycling needs `source_db` (where bikes are pushed).
+- `read_crossings(gmns_db)`: the crossings and the lanes they cross. `read_boundary(db)`,
+  `boundary_from_geojson(path)`: an area's outline.
+- `lane_settings()`: the settings in effect ([Settings](../guides/settings.md)).
 
-- `modes`: several modes into one table, e.g. `modes=("driving", "walking")`. The first is read as it is; each
-  later one adds only the lanes of links the earlier ones do not have (a footpath, not the road you also walk on),
-  and only the turns between lanes that are kept. `modes` wins over `mode`.
-- `highway` is the link's `facility_type`, `width_m` the lane's `width` (null where untagged;
-  `render_lanes` fills the default), `use` from `allowed_uses`, `name` on lane 1 only.
-- Levels (`bridge` / `tunnel` / `layer`) and `osm_id`: from the GMNS `link` if it has those
-  columns (duckOSM writes them), else from `source_db`, the duckOSM database the GMNS file was made
-  from (older GMNS files). `osm_id` is only available from `source_db`.
-- `reverse_link_id`: the link with the same two nodes swapped **and** the same geometry, so the
-  two halves of a one-way loop are not a pair.
-- `turns`: each inbound lane in the movement's range into the outbound lane at the same place in
-  its range (NULL = every lane), with the movement `type`.
-
-## `read_boundary(db)`
-
-The area's boundary from a duckOSM database (`main.boundary`, written when the area was built with
-one) as a shapely geometry, or `None`. Pass it on: `render_lanes(..., boundary=geom)`.
-
-## `boundary_from_geojson(path)`
-
-A GeoJSON file's geometries as one shapely geometry (plain json + shapely, no GDAL).
-
-## `lane_settings(settings=None)`
-
-lanestyle's effective settings: the package defaults, then a `lanestyle.json` in the current
-folder, then `settings["lanes"]`. Useful to see what a map will use.
-
-## `write_serve(out_html)`
-
-Drop a `serve.py` next to a saved map: `python serve.py [port]` serves that folder without caching
-and prints the URL. Returns the script's path.
-
-## Lower level
-
-`lanestyle.lines.lane_lines(lanes, settings)` returns the lane lines as a GeoJSON FeatureCollection
-(`t` type, `b` roadstyle band, `k` width factor), and `lanestyle.junctions.junction_fillets` the
-optional corner fills. `render_lanes` calls both.
+Ids: `link_id` is duckOSM's BIGINT edge id; keep it `Int64`. On the page a lane's ids are text.

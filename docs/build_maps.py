@@ -1,28 +1,24 @@
-"""The live map embedded in the docs (docs/maps/monaco.html), from the bundled Monaco sample.
+"""The live map of the docs (docs/maps/monaco.html), built here from the Monaco files and committed: the
+docs workflow cannot make them (the GMNS export needs SUMO, the level area holds the fixes made in the editor).
 
-Run from the repo root::
+    python docs/build_maps.py AREA GMNS_DB SOURCE_DB      # writes docs/maps/monaco.html
 
-    python docs/build_maps.py        # writes docs/maps/monaco.html
-
-It is not committed: the docs workflow (.github/workflows/docs.yml) builds it before ``mkdocs build``.
-With ``CARTO_API_KEY`` set (the repo secret) the base map is CARTO's Voyager; without it, Esri's
-keyless street map.
+No key goes into the committed page: CARTO and Google keys are removed from the environment first, and
+the base map is Esri's keyless street map.
 """
 import os
+import sys
 from pathlib import Path
 
-import geopandas as gpd
-import pandas as pd
+for k in [k for k in os.environ if "CARTO" in k or "GOOGLE" in k]:
+    del os.environ[k]
 
-import lanestyle as ls
+import lanestyle as ls  # noqa: E402  after the keys are gone
 
-DOCS = Path(__file__).resolve().parent
-OUT = DOCS / "maps"
-OUT.mkdir(exist_ok=True)
-
-lanes = gpd.read_parquet(DOCS / "data" / "monaco_lanes.parquet")
-turns = pd.read_parquet(DOCS / "data" / "monaco_turns.parquet")
-boundary = ls.boundary_from_geojson(DOCS / "data" / "monaco_boundary.geojson")
-basemap = "voyager" if os.environ.get("CARTO_API_KEY") else "esri_street"
-ls.render_lanes(lanes, turns=turns, boundary=boundary, basemap=basemap, name="lanestyle — Monaco").save(OUT / "monaco.html")
-print("wrote", OUT / "monaco.html", f"{(OUT / 'monaco.html').stat().st_size / 1e6:.1f} MB")
+area, gmns, source_db = sys.argv[1:4]
+out = Path(__file__).resolve().parent / "maps" / "monaco.html"
+out.parent.mkdir(exist_ok=True)
+ls.lane_page(area, gmns, source_db, basemap="esri_street", tunnel_control=True, name="lanestyle — Monaco").save(out)
+html = out.read_text()
+assert "AIza" not in html and "carto_api_key" not in html.lower(), "a key went into the page"
+print("wrote", out, f"{out.stat().st_size / 1e6:.1f} MB")

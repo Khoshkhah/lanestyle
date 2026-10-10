@@ -36,15 +36,9 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - run: pip install pyarrow ".[docs]"
+      - run: pip install ".[docs]"
 
-      # The live map (docs/maps/monaco.html) is built here, not committed. The CARTO base map needs
-      # a key (repo secret CARTO_API_KEY, restricted to khoshkhah.github.io in the CARTO dashboard);
-      # without the secret the map uses Esri's keyless street tiles instead.
-      - name: Build the live map
-        env:
-          CARTO_API_KEY: ${{ secrets.CARTO_API_KEY }}
-        run: python docs/build_maps.py
+      # The live map (docs/maps/monaco.html) is committed, built locally by docs/build_maps.py: the GMNS export needs SUMO.
 
       - uses: actions/configure-pages@v5
         with:

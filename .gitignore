@@ -1,6 +1,5 @@
 *.egg-info/
 *.geojson
-!docs/data/*.geojson
 *.html
 *.pyc
 .venv/
@@ -9,6 +8,7 @@
 __pycache__/
 build/
 dist/
-docs/maps/
+docs/maps/*
+!docs/maps/monaco.html
 renders/
 site/

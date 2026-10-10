@@ -1,11 +1,9 @@
 # Guides
 
-<p class="lead">One page per thing you might want to do.</p>
+<p class="lead">One page each, one task each.</p>
 
-- [The lane table](lane-table.md): what `render_lanes` needs, column by column, and how to build it from your own data.
-- [Lane lines](lane-lines.md): dividers, centre lines and edges, how they are placed and styled.
-- [Footpaths, levels, connectors](footpaths-and-levels.md): sidewalks and their gap to the road, zebras, tunnels and layers, connectors.
-- [Turns, clicks and labels](turns.md): the `turns` table, the click colours, the type labels and the popup.
-- [From OSM to lanes](../pipeline.md): the full duckOSM chain, from a `.osm.pbf` to the map.
-- [Put it on a website](website.md): serve the page, embed it, drive it from JavaScript.
-- [AI agents](agents.md): the agent skill, the docs as text, and the rules for agents that change lanestyle.
+- [Lanes and markings](lanes-and-markings.md): bus and bike lanes, lane lines, arrows, BUS and bike marks.
+- [Junctions, zebras and sidewalks](junctions-zebras-sidewalks.md): where lanes stop, painted crossings, tagged sidewalks.
+- [Fix the drawing in the editor](editor.md): roadstyle's level editor, with your lanes on it.
+- [Settings](settings.md): one `lanestyle.json`.
+- [AI agents](agents.md): the skill and the docs as text.

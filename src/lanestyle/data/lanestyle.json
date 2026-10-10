@@ -5,16 +5,11 @@
       "bus": "#d6336c",
       "bike": "#1c7ed6",
       "walk": "#f0cb8c",
-      "crossing": "#f8e7bf",
-      "sidewalk": "#e6b9a6",
       "groups": {
         "walking": "#f0cb8c",
         "cycling": "#1c7ed6",
         "walking+cycling": "#1c7ed6"
-      },
-      "clicked": "#e0453a",
-      "turns_into": "#149a86",
-      "uturn": "#8e44ad"
+      }
     },
     "lines": {
       "divider": true,
@@ -35,28 +30,13 @@
       "minzoom": 17
     },
     "arrows": {
-      "length_m": 4,
       "end_m": 10,
       "repeat_m": 0,
       "at_junctions": true,
       "minzoom": 18
     },
-    "names": {
-      "clear_m": 3
-    },
     "junction_trim_m": 1,
-    "line_min_m": 1.5,
-    "head_m": 25,
-    "fillet_m": 0,
-    "frame_gap_m": 2.0,
-    "connectors": true,
-    "connectors_clickable": false,
     "tunnel_body": "#f6f4ee",
-    "crossing_max_m": 10,
-    "crossing_min_on": 0.2,
-    "frame_reach_m": 8.0,
-    "frame_casing": false,
-    "type_label_zoom": null,
     "default_width_m": 3.25,
     "width_m_by_use": {
       "walk": 2.0,
@@ -64,7 +44,6 @@
     },
     "casing_m": 0.14,
     "casing_min_px": 1,
-    "centre_line_m": 0.15,
-    "width_m_zoom": 0
+    "centre_line_m": 0.15
   }
 }
