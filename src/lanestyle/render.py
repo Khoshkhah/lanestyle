@@ -28,35 +28,30 @@ _POPUP = ["name", "lane_type", "connects", "highway", "kind", "level", "footway"
           "to_node_id"]                       # the ones present and not null show
 _MARKED = ("auto", "bus", "bike", "walk")       # the mode groups: each has its colour and a legend row
 _USE_NAME = {"auto": "car lanes", "bus": "bus lanes", "bike": "bike lanes", "walk": "footways"}      # the legend rows
-# with several modes loaded (``from_gmns(modes=...)``) a lane is coloured by the set of modes that can use it
-_GROUP_ORDER = ("driving", "walking", "cycling")
-_GROUP_NAME = {"driving": "cars only", "driving+walking": "cars + pedestrians", "walking": "pedestrians only",
-               "cycling": "bikes only", "driving+cycling": "cars + bikes", "walking+cycling": "pedestrians + bikes",
-               "driving+walking+cycling": "cars + pedestrians + bikes"}
+# with several modes loaded (``from_gmns(modes=...)``) a lane of a road cars do not use is coloured by who uses it
+_GROUP_ORDER = ("walking", "cycling")
+_GROUP_NAME = {"walking": "pedestrians only", "cycling": "bikes only", "walking+cycling": "pedestrians + bikes"}
 
 
 def _colour_groups(g, s):
     """What colours the lanes and what the Roads box lists: ``(column, {value: colour}, [(label, colour)])``.
 
-    One mode: the lane's ``use`` (car, bus, bike, walk). Several (a ``modes`` column from ``from_gmns(modes=...)`` with
-    more than one distinct set): the set of modes whose network has the lane's link, so a street cars and pedestrians
-    share, a car-only tunnel and a pedestrian-only footway differ; a bus lane and an on-road bike lane keep their own."""
+    A lane of a road cars use is coloured by its ``use`` (car, bus, bike, walk). With several modes loaded (a ``modes`` column from
+    ``from_gmns(modes=...)``), a lane of a road cars do not use takes the colour of who uses it (``colors.groups``: walking, cycling,
+    walking+cycling), as the level editor colours that road (2026-10-09: one rule; before, every set of modes had its colour, cars too)."""
     col = s["colors"]
-    if "modes" in g and g["modes"].replace("", None).dropna().nunique() > 1:
-        key = g["modes"].map(lambda m: "+".join(x for x in _GROUP_ORDER if x in m.split(",")) or "driving")
-        lane_beyond = (g["lane_num"] > g["lanes"].fillna(0)) if {"lane_num", "lanes"} <= set(g.columns) else False
-        if "connector" in g:       # a connector has no lane number: one that joins bike lanes (it takes its lane's use) is a bike lane's too
-            lane_beyond = lane_beyond | g["connector"].fillna(False).astype(bool)
-        key = key.where(~(g["use"] == "bus"), "bus").where(~((g["use"] == "bike") & lane_beyond), "bike")
-        g["mode_group"] = key
-        colours = {k: col["groups"].get(k, col["auto"]) for k in set(key)} | {"bus": col["bus"], "bike": col["bike"]}
-        names = {**_GROUP_NAME, "bus": "bus lanes", "bike": "bike lanes"}
-        order = [*_GROUP_NAME, "bus", "bike"]
-        rows = [(names[k], colours[k]) for k in order if k in set(key)]
-        return "mode_group", colours, rows
     def key(u):          # a shared lane ("bus,bike": a bus lane bikes may use) is the first of bus, bike, walk it allows; a use of none of them is a car lane's
         return u if u in _MARKED else next((m for m in ("bus", "bike", "walk") if m in u.split(",")), "auto")
     keys = {u: key(u) for u in set(g["use"])}
+    if "modes" in g and g["modes"].replace("", None).dropna().nunique() > 1:
+        who = g["modes"].fillna("").map(lambda m: None if "driving" in m.split(",") else "+".join(x for x in _GROUP_ORDER if x in m.split(",")) or None)
+        if "connector" in g:     # a connector of a car road's lane keeps its lane's use
+            who = who.where(~g["connector"].fillna(False).astype(bool) | who.notna(), None)
+        g["mode_group"] = [w if isinstance(w, str) else keys[u] for w, u in zip(who, g["use"], strict=True)]
+        colours = {k: col[k] for k in _MARKED} | {k: col["groups"][k] for k in set(who.dropna())}
+        present = set(g["mode_group"])
+        rows = [(_USE_NAME[k], col[k]) for k in _MARKED if k in present] + [(_GROUP_NAME[k], col["groups"][k]) for k in _GROUP_NAME if k in present]
+        return "mode_group", colours, rows
     present = [k for k in _MARKED if k in set(keys.values())]
     return "use", {u: col[k] for u, k in keys.items()}, [(_USE_NAME[k], col[k]) for k in present]
 

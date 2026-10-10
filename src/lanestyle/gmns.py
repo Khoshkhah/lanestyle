@@ -59,11 +59,23 @@ def _from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
     on: nor that road's other direction, the walking network's link of a one-way road, which has its OSM way, ``osm_id``,
     in common with the earlier mode's link), and only the turns between lanes that are kept. A ``modes`` column says which of them have the link
     (``"driving,walking"``: a street cars and pedestrians share), which ``render_lanes`` colours by. ``modes`` wins
-    over ``mode``."""
+    over ``mode``. Cycling counts only where bikes are ridden: a link duckOSM marks ``dismount`` (bikes pushed, a footway) is
+    walked, a walking link (2026-10-09), so reading cycling takes ``source_db``, where that mark is (GMNS has none)."""
     if not modes:
         return _from_gmns_mode(gmns_db, mode, source_db)
     import geopandas as gpd
     import pandas as pd
+
+    pushed = set()
+    if "cycling" in modes:
+        if not source_db:
+            raise ValueError("from_gmns(modes=... 'cycling' ...): pass source_db, the duckOSM file: its cycling.edges.dismount says where bikes are pushed, not ridden")
+        import duckdb
+        con = duckdb.connect(str(source_db), read_only=True)
+        try:
+            pushed = {r[0] for r in con.execute("SELECT edge_id FROM cycling.edges WHERE dismount").fetchall()}
+        finally:
+            con.close()
 
     tables, turn_tables, seen, seen_ways, modes_of, way_of = [], [], set(), set(), {}, {}
     earlier = set()                                      # the lanes of the modes read before
@@ -73,8 +85,10 @@ def _from_gmns(gmns_db, mode="driving", source_db=None, modes=None):
         # between the two is a connector, labelled and ordered by it) but is flagged ``walkers``, and is no turn of the car lane (it would give the lane a left / right arrow
         # towards a footway): lane types, arrows, counts and click highlights leave the flagged rows out
         turns = turns.assign(walkers=turns["from_lane"].astype(str).isin(earlier)) if i else turns.assign(walkers=False)
-        for link in set(lanes["link_id"].dropna()):      # every mode whose network has the link, kept or not
-            modes_of.setdefault(link, []).append(m)
+        for link in set(lanes["link_id"].dropna()):      # every mode whose network has the link, kept or not (cycling: where ridden)
+            mm = "walking" if m == "cycling" and link in pushed else m       # bikes pushed: walked
+            if mm not in modes_of.get(link, []):
+                modes_of.setdefault(link, []).append(mm)
         if "osm_id" in lanes:
             way_of.update(zip(lanes["link_id"], lanes["osm_id"]))
         if i:

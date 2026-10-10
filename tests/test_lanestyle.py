@@ -401,23 +401,24 @@ def test_default_widths_by_use():
     assert _widths(g.drop(columns=["lane_num", "lanes"]), lane_settings()).tolist()[2] == 3.25
 
 
-def test_several_modes_colour_a_lane_by_the_set_of_modes_that_can_use_it(tmp_path):
-    """A street cars and pedestrians share, a car-only road and a pedestrian-only footway are three colours, each with a
-    Roads-box row; a bus lane keeps its own. One mode: the lane's use, as before."""
+def test_several_modes_colour_a_road_cars_do_not_use_by_who_uses_it(tmp_path):
+    """2026-10-09, one rule with the level editor: a lane of a road cars use keeps its use's colour (a street cars and pedestrians
+    share is a car road, a bus lane keeps its own); a lane of a road cars do not use takes the colour of who uses it (a footway: walk).
+    One mode: the lane's use, as before."""
     gmns, src = _with_walking(tmp_path)
     lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
     r = lanes.set_index("lane_id")
     assert r.loc["2_1", "modes"] == "driving,walking" and r.loc["5_1", "modes"] == "walking"   # link 2 is in both networks
     assert r.loc["1_1", "modes"] == "driving"
     html = ls.render_lanes(lanes, turns=turns).html
-    for row in ("cars only", "cars + pedestrians", "pedestrians only", "bus lanes"):
+    for row in ("car lanes", "bus lanes", "pedestrians only"):
         assert row in html, row
-    assert "#7fb7a8" in html and "#f0cb8c" in html                          # the shared street, the footway
-    c = {k: p["color"] for k, p in _lane_props(html).items()}               # the mode group is the lane's colour (no mode_group property any more)
+    assert "cars + pedestrians" not in html
+    c = {k: p["color"] for k, p in _lane_props(html).items()}
     cars, bus, both, walk = c["1_1"], c["1_2"], c["2_1"], c["5_1"]
-    assert (cars, bus, both, walk) == ("#a3a3a3", "#d6336c", "#7fb7a8", "#f0cb8c") and c["3_1"] == cars and len({cars, bus, both, walk}) == 4
-    single = ls.render_lanes(*ls.from_gmns(gmns)).html                      # one mode: by use, no groups
-    assert "cars + pedestrians" not in single and "car lanes" in single
+    assert (cars, bus, both, walk) == ("#a3a3a3", "#d6336c", "#a3a3a3", "#f0cb8c") and c["3_1"] == cars
+    single = ls.render_lanes(*ls.from_gmns(gmns)).html                      # one mode: by use
+    assert "pedestrians only" not in single and "car lanes" in single
 
 
 def test_a_tunnel_is_one_whole_lane_in_its_band_and_a_bridge_keeps_its_look(tmp_path):

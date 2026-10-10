@@ -113,4 +113,15 @@ def lane_items(roads):
         tun = os.environ.get("LANESTYLE_TUNNEL_CASING")     # "dash,gap": a tunnel casing's two colours
         if tun:
             cfg.update(tunnel_palettes={"lanestyle_test": tun.split(",")}, tunnel_palette="lanestyle_test")
+    # a road cars do not use (no driving edge) in lanestyle's colour for who uses it, as the lane page colours a lane by the networks
+    # that have its link (colors.groups: walking, cycling, walking+cycling; 2026-10-09); every other road in the car lane colour
+    order = ("walking", "cycling")
+    if "modes" not in roads:
+        raise ValueError("lanestyle.editor.lane_items: the area's roads have no per-edge modes (who uses each road): make the area again")
+    who = {}
+    for r, m in zip(roads["road"], roads["modes"].fillna(""), strict=True):
+        who.setdefault(r, set()).update(x.strip().removesuffix(" (private)") for x in str(m).split("+"))     # a private road: its modes "(private)"
+    groups = s["colors"]["groups"]
+    colour = {r: s["colors"]["auto"] if "driving" in w or not (w & set(order)) else groups["+".join(x for x in order if x in w)] for r, w in who.items()}
+    kw.update(color_table={e: colour[r] for e, r in zip(roads["edge"].astype(str), roads["road"], strict=True)}, color_key="edge")
     return [], kw

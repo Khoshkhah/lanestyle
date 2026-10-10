@@ -8,13 +8,9 @@
       "crossing": "#f8e7bf",
       "sidewalk": "#e6b9a6",
       "groups": {
-        "driving": "#a3a3a3",
-        "driving+walking": "#7fb7a8",
         "walking": "#f0cb8c",
         "cycling": "#1c7ed6",
-        "driving+cycling": "#8fa3d6",
-        "walking+cycling": "#a8d48a",
-        "driving+walking+cycling": "#6aa5c4"
+        "walking+cycling": "#1c7ed6"
       },
       "clicked": "#e0453a",
       "turns_into": "#149a86",

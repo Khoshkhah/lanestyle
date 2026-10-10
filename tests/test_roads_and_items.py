@@ -241,6 +241,7 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     ``edge`` = its ``edge_id``), each labelled with its road, the lanes picked, the bus and bike lanes drawn, the car lanes unseen, no
     connectors; a link that is no edge of the editor is left out and said (2026-10-10)."""
     import geopandas as gpd
+    import pandas as pd
     from shapely.geometry import LineString
 
     from lanestyle import editor
@@ -252,8 +253,15 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     links = sorted({str(k) for k in lanes[~lanes["connector"].fillna(False).astype(bool)]["link_id"]} if "connector" in lanes else {str(k) for k in lanes["link_id"]})
     monkeypatch.delenv("LANESTYLE_CASING_COLOR", raising=False)
     monkeypatch.delenv("LANESTYLE_CONNECTORS", raising=False)
-    drawn = gpd.GeoDataFrame({"edge": links[1:], "road": ["r" + x for x in links[1:]], "highway": "residential"}, geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
+    drawn = gpd.GeoDataFrame({"edge": links[1:], "road": ["r" + x for x in links[1:]], "highway": "residential", "modes": "driving + walking"},
+                             geometry=[LineString([(0, 0), (1, 1)])] * (len(links) - 1), crs=4326)
+    foot = gpd.GeoDataFrame({"edge": ["999"], "road": ["foot"], "highway": ["footway"], "modes": ["walking (private)"]}, geometry=[LineString([(0, 0), (1, 0)])], crs=4326)
+    drawn = gpd.GeoDataFrame(pd.concat([drawn, foot], ignore_index=True), crs=4326)
     overlays, kw = editor.lane_items(drawn)
+    # a road cars do not use in lanestyle's colour for who uses it (colors.groups), every other one in the car lane colour (2026-10-09)
+    table = kw.pop("color_table")
+    assert kw.pop("color_key") == "edge" and table["999"] == "#f0cb8c" and {table[e] for e in links[1:]} == {"#a3a3a3"}
+    drawn = drawn[drawn["road"] != "foot"]
     st, items, popup = kw.pop("settings"), kw.pop("items")["features"], kw.pop("items_popup")
     assert overlays == [] and kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False,
                                      "palette": "lanestyle_editor"}
