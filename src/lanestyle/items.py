@@ -431,3 +431,53 @@ def only(fc, **match):
         return None
     keep = [f for f in fc["features"] if all(f["properties"].get(k) == v for k, v in match.items())]
     return {"type": "FeatureCollection", "features": keep} if keep else None
+
+
+def zebra_strokes(g, cr, st, colour):
+    """The painted zebra crossings as LINE items (2026-10-10): each stripe a stroke along the road, ``stripe_m`` wide, as long as the crossing is
+    wide, in ``colour``, an item (:data:`ZEBRA`: over the lanes and their lines, under the arrows) of the link of the lane under it, shown from
+    ``st["minzoom"]`` (roadstyle items= ``minzoom``). The stripes lie across duckOSM's crossing rectangle (``cr``, :func:`lanestyle.read_crossings`:
+    ``length`` across the road, its width along it), ``stripe_m + gap_m`` apart, the row centred; only crossings duckOSM calls painted.
+    ``g``: the lanes (``lane_id`` -> ``link_id``). None without any."""
+    import math
+
+    import geopandas as gpd
+    from shapely import wkt as _w
+    from shapely.geometry import LineString
+
+    if cr is None or not len(cr) or "painted" not in cr or "cgeom" not in cr:
+        return None
+    cr = cr[cr["painted"].fillna(False).astype(bool)]
+    if not len(cr):
+        return None
+    u = g.estimate_utm_crs()
+    pitch, thick = float(st["stripe_m"]) + float(st["gap_m"]), float(st["stripe_m"])
+    link_of = dict(zip(g["lane_id"], g["link_id"], strict=True))
+    lines, links = [], []
+    for _cid, grp in cr.groupby("crossing_id"):
+        rect = gpd.GeoSeries([_w.loads(grp["cgeom"].iloc[0])], crs=4326).to_crs(u).iloc[0]
+        if rect.geom_type != "Polygon":
+            continue
+        (x0, y0), (x1, y1), _, (x3, y3) = list(rect.exterior.coords)[:4]
+        length = math.hypot(x1 - x0, y1 - y0)                       # across the road: the rectangle's first side
+        wx, wy = x3 - x0, y3 - y0                                   # along the road: the second side, as long as the zebra is wide
+        if length < thick or math.hypot(wx, wy) < 0.5:
+            continue
+        under = [(r.across_from, r.across_to, int(link_of[r.lane_id])) for r in grp.itertuples() if r.lane_id in link_of]
+        if not under:
+            continue
+        dx, dy = (x1 - x0) / length, (y1 - y0) / length
+        n = int((length - thick) // pitch) + 1
+        first = (length - ((n - 1) * pitch + thick)) / 2
+        for i in range(n):
+            mid = first + i * pitch + thick / 2                     # the stripe's middle across the road: its stroke runs along the road
+            a = (x0 + dx * mid, y0 + dy * mid)
+            lines.append(LineString([a, (a[0] + wx, a[1] + wy)]))
+            links.append(min(under, key=lambda x, m=mid: 0.0 if x[0] <= m <= x[1] else min(abs(m - x[0]), abs(m - x[1])))[2])
+    if not lines:
+        return None
+    back = gpd.GeoSeries(lines, crs=u).to_crs(4326)
+    return {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in ln.coords]},
+         "properties": {"edge_id": link, "order": ZEBRA, "color": colour, "width_m": thick, "offset_m": 0.0, "minzoom": float(st.get("minzoom", 17))}}
+        for ln, link in zip(back, links, strict=True)]}

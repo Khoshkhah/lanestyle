@@ -82,3 +82,27 @@ def test_a_shared_bus_and_bike_lane_has_both_marks():
         return sum(len(f["geometry"]["coordinates"]) for f in fc["features"])
     bike_only = parts("bike")
     assert parts("bus,bike") == parts("bus") + bike_only
+
+
+def test_a_painted_zebra_is_white_strokes_along_the_road_from_zoom_17():
+    """2026-10-10: a painted crossing's stripes are items of the link under them, strokes along the road as long as the crossing is wide,
+    stripe_m wide and stripe_m + gap_m apart across it, shown from minzoom; an unpainted crossing has none."""
+    import math
+
+    import geopandas as gpd
+    import pandas as pd
+    from shapely.geometry import LineString
+
+    from lanestyle.items import ZEBRA, zebra_strokes
+    k = 111320 * math.cos(math.radians(59.3))
+    g = gpd.GeoDataFrame({"lane_id": ["1_1"], "link_id": [7]}, geometry=[LineString([(18.0, 59.3), (18.001, 59.3)])], crs=4326)
+    # 4 m along the road (x), 6 m across it (y): first side across, second along
+    x0, y0 = 18.0005, 59.3 - 3 / 111320
+    rect = f"POLYGON(({x0} {y0}, {x0} {y0 + 6 / 111320}, {x0 + 4 / k} {y0 + 6 / 111320}, {x0 + 4 / k} {y0}, {x0} {y0}))"
+    cr = pd.DataFrame([{"crossing_id": 1, "lane_id": "1_1", "across_from": 0.0, "across_to": 6.0, "painted": True, "cgeom": rect}])
+    fc = zebra_strokes(g, cr, {"stripe_m": 0.5, "gap_m": 0.5, "minzoom": 17}, "#ffffff")
+    fs = fc["features"]
+    assert len(fs) == 6 and all(f["properties"]["edge_id"] == 7 and f["properties"]["order"] == ZEBRA and f["properties"]["minzoom"] == 17 for f in fs)
+    (ax, ay), (bx, by) = fs[0]["geometry"]["coordinates"]
+    assert abs((bx - ax) * k - 4) < 0.05 and abs(by - ay) * 111320 < 0.05            # along the road, as long as the crossing is wide
+    assert zebra_strokes(g, cr.assign(painted=False), {"stripe_m": 0.5, "gap_m": 0.5}, "#ffffff") is None
