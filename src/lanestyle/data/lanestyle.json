@@ -42,6 +42,16 @@
       "walk": 2.0,
       "bike": 1.5
     },
+    "path_width_m": {
+      "footway": 2.0,
+      "steps": 2.0,
+      "path": 1.5,
+      "pedestrian": 5.0,
+      "service": 3.0,
+      "residential": 3.0,
+      "track": 2.5,
+      "default": 2.0
+    },
     "casing_m": 0.14,
     "casing_min_px": 1,
     "centre_line_m": 0.15

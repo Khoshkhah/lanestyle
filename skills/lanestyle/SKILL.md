@@ -49,7 +49,7 @@ roadstyle-levels edit area.levels --items lanestyle.editor:lane_items`.
 ## Settings
 
 `src/lanestyle/data/lanestyle.json`, overridden by a `lanestyle.json` in the current folder: colours
-(`colors.auto/bus/bike/walk`, `colors.groups`), widths (`default_width_m`, `width_m_by_use`,
+(`colors.auto/bus/bike/walk`, `colors.groups`), widths (`default_width_m`, `width_m_by_use`, `path_width_m`,
 `casing_m`, `centre_line_m`), `lines`, `arrows`, `zebra`, `sidewalk`.
 
 ## Traps

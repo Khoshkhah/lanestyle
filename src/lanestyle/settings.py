@@ -68,6 +68,20 @@ def _widths(g, s):
     return w.fillna(default)
 
 
+
+def _path_widths(highway, width_tag, table):
+    """A road without lanes (a footway, steps, a path, a walking-only service road ...) in metres: its OSM ``width`` tag (metres: "2",
+    "2.5 m"), else ``path_width_m`` by its class, else its ``default``. Returns ``(widths, unread)``: the tags that are no width in metres."""
+    import re
+
+    out, unread = [], []
+    for hw, tag in zip(highway, width_tag, strict=True):
+        m = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*(?:m)?\s*", str(tag)) if isinstance(tag, str) else None
+        if isinstance(tag, str) and not m:
+            unread.append(tag)
+        out.append(float(m.group(1).replace(",", ".")) if m else float(table.get(str(hw), table["default"])))
+    return out, unread
+
 def _roads_only(g):
     """The lanes of links that have a road class: a link with none is no road (a ferry in the walking network, a way with no ``highway`` tag)."""
     return g[g["highway"].notna()] if "highway" in g and g["highway"].isna().any() else g

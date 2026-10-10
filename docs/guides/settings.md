@@ -14,6 +14,7 @@ Your `lanestyle.json` states only what it changes, as roadstyle's settings do:
 | `colors.groups` | walking `#f0cb8c`, cycling and walking+cycling `#1c7ed6` | a road cars do not use, by who uses it |
 | `default_width_m` | `3.25` | a lane with no width tag |
 | `width_m_by_use` | walk `2.0`, bike `1.5` | an untagged footpath, an on-road bike lane |
+| `path_width_m` | footway `2.0`, steps `2.0`, path `1.5`, pedestrian `5.0`, service `3.0`, residential `3.0`, track `2.5`, default `2.0` | a road without lanes (footway, steps, path, a walking-only service road ...) with no OSM `width` tag, by its class |
 | `casing_m` / `casing_min_px` | `0.14` / `1` | the road's outline, metres, and at least this many pixels |
 | `centre_line_m` | `0.15` | the gap between two directions, where the centre line lies |
 | `lines` | dashes 3 m / gaps 9 m, `0.15` m wide, `#f2f2f2`, from zoom 17 | lane lines (`divider`, `centre` switch them) |

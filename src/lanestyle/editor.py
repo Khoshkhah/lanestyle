@@ -94,6 +94,22 @@ def _strokes(gmns, source_db, connectors=False):
     return lane_fc, line_fc, marks_fc, width, lines, conn_fc, zebra_fc, side_fc, special
 
 
+def _width_tags(edge_ref, source_db):
+    """The OSM ``width`` tag of each road's way (``edge_ref``: ``<way>#<piece><f|r>``, a negative way: its OSM way with a minus), from
+    duckOSM's ``raw.ways``; None where there is none (or no source db)."""
+    if not source_db:
+        return [None] * len(edge_ref)
+    import duckdb
+    ways = [abs(int(m)) if m else None for m in edge_ref.astype(str).str.extract(r"^(-?\d+)")[0].fillna("")]
+    con = duckdb.connect(str(source_db), read_only=True)
+    try:
+        ids = sorted({w for w in ways if w is not None})
+        tag = dict(con.execute("SELECT osm_id, tags['width'] FROM raw.ways WHERE osm_id IN (SELECT unnest(?::BIGINT[]))", [ids]).fetchall()) if ids else {}
+    finally:
+        con.close()
+    return [tag.get(w) for w in ways]
+
+
 def lane_items(roads, gmns=None, source_db=None, connectors=None):
     """The editor's hook (roadstyle.level_editor): each road one line at its full width (``width_m``, both directions; config
     ``single_line_classes``: every class) on the lanes' line, in the car lane colour, with roadstyle's street names; the road's own items
@@ -125,14 +141,23 @@ def lane_items(roads, gmns=None, source_db=None, connectors=None):
     edges = roads["edge"].astype(str)
     own = {r: e for r, e in zip(roads["road"], edges, strict=True) if e in width}
     roads["width_m"] = [width.get(own.get(r), np.nan) for r in roads["road"]]
+    # a road without lanes (a footway, steps, a path: no GMNS lanes of the driving network) in metres too, as the roads with lanes
+    # (2026-10-10): its OSM width tag, else lanestyle.json path_width_m by its class
+    from lanestyle.settings import _path_widths, lane_settings
+    s = lane_settings()
+    need = roads["width_m"].isna()
+    if need.any():
+        tag = _width_tags(roads.loc[need, "edge_ref"], src) if "edge_ref" in roads else [None] * int(need.sum())
+        w, unread = _path_widths(roads.loc[need, "highway"], tag, s["path_width_m"])
+        roads.loc[need, "width_m"] = w
+        if unread:
+            print(f"lanestyle.editor: {len(unread)} width tags are no width in metres, the class width instead: {sorted(set(unread))[:5]}", flush=True)
     roads.geometry = [lines[e] if e in lines else (LineString(list(lines[own[r]].coords)[::-1]) if own.get(r) in lines else g)
                       for e, r, g in zip(edges, roads["road"], roads.geometry, strict=True)]
     # the road's own items in roadstyle's one road layer (render items=, 2026-10-10): the car lanes unseen (picked and highlighted), every bus
     # and bike lane drawn on the road; the lane lines and marks on it; connectors unseen, not picked (route highlights)
     items = (on_edges(lane_fc, pick=True, seen=lambda f: f["properties"]["lane_id"] in special) + on_edges(line_fc) + on_edges(zebra_fc) + on_edges(side_fc) + on_edges(marks_fc)
              + on_edges(conn_fc, seen=lambda f: False))
-    from lanestyle.settings import lane_settings
-    s = lane_settings()
     # metres at every zoom (width_m_zoom 0) and lanestyle's casing; roadstyle's street names, not its one-way chevrons (lanestyle's arrows instead);
     kw = {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": float(s["casing_m"]), "casing_min_px": float(s["casing_min_px"]), "arrows": False,
           "items": {"type": "FeatureCollection", "features": items},

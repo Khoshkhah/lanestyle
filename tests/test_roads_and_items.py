@@ -116,6 +116,7 @@ def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path
     # a road cars do not use in lanestyle's colour for who uses it (colors.groups), every other one in the car lane colour (2026-10-09)
     table = kw.pop("color_table")
     assert kw.pop("color_key") == "edge" and table["999"] == "#f0cb8c" and {table[e] for e in links[1:]} == {"#a3a3a3"}
+    assert drawn.loc[drawn["road"] == "foot", "width_m"].tolist() == [2.0]   # a footway without lanes: lanestyle.json path_width_m, in metres
     drawn = drawn[drawn["road"] != "foot"]
     st, items, popup = kw.pop("settings"), kw.pop("items")["features"], kw.pop("items_popup")
     assert overlays == [] and kw == {"width_m_col": "width_m", "width_m_zoom": 0, "casing_m": 0.14, "casing_min_px": 1.0, "arrows": False,
@@ -175,3 +176,10 @@ def test_the_lane_page_is_the_editors_drawing_without_its_panel(tmp_path):
     html = ls.lane_page(tmp_path / "area", str(gmns), str(src)).html
     assert "roads-simple" in html and '"lane_id"' in html and "1_2" in html         # the one road layer, its lane items
     assert "lv-apply" not in html and "Lanes" in html                               # no editor panel; the page's own name
+
+
+def test_a_road_without_lanes_is_its_width_tag_else_its_class_width():
+    from lanestyle.settings import _path_widths
+    table = {"footway": 2.0, "steps": 2.0, "default": 1.0}
+    w, unread = _path_widths(["footway", "steps", "corridor", "footway", "footway"], [None, "2.5 m", None, "3,5", "8'"], table)
+    assert w == [2.0, 2.5, 1.0, 3.5, 2.0] and unread == ["8'"]
