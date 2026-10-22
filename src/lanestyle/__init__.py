@@ -9,5 +9,5 @@ from lanestyle.gmns import (
 from lanestyle.page import lane_page
 from lanestyle.settings import lane_settings
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 __all__ = ["lane_page", "from_gmns", "read_crossings", "read_boundary", "boundary_from_geojson", "lane_settings"]
