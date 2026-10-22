@@ -23,7 +23,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS",
   "Topic :: Scientific/Engineering :: Visualization",
 ]
-dependencies = ["roadstyle>=0.21.0", "geopandas", "shapely>=2", "duckdb", "pandas"]
+dependencies = ["roadstyle>=0.24.2", "geopandas", "shapely>=2", "duckdb", "pandas"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
