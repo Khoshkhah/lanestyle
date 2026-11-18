@@ -110,7 +110,7 @@ fn page_roads(draw: Vec<u8>, width_m: &[f64], lines: &[crate::geo::Line]) -> Res
 /// (`basemap`, `filter_control`, `name`, ...). Gives the page and what lanestyle and roadstyle say about it.
 pub fn lane_page(area: &Path, gmns: &str, source: &str, connectors: bool, kw: serde_json::Map<String, serde_json::Value>) -> Result<(String, Vec<String>)> {
     use crate::{editor, gmns as g, settings};
-    use serde_json::{json, Value};
+    use serde_json::json;
     let draw = area_draw(area)?;
     let (rows, has_modes) = road_rows(draw.clone())?;
     let cols: Vec<String> = roadstyle::read::read_table(draw.clone(), "geometry").map_err(|e| e.to_string())?
@@ -136,7 +136,74 @@ pub fn lane_page(area: &Path, gmns: &str, source: &str, connectors: bool, kw: se
     args.insert("filter_control".into(), json!(false));
     args.extend(it.kw);
     args.extend(kw);
-    // render_edges(backend="web"): the palette, profile and settings out of the keywords; the class column; the live page
+    render(roads, args, it.notes)
+}
+
+/// The lane page of a SUMO net (the text of a `.net.xml`, `sumo::from_sumo_net`): every SUMO lane one line on its own shape at its own
+/// width, in lanestyle's colour for its use, with roadstyle's outline; the lanes of the internal edges (SUMO's paths through a junction)
+/// too, under the roads. The same look as `lane_page`: lanestyle's settings and roadstyle's palette "amber" in the car lane colour. `kw`:
+/// render_edges' keywords over the page's. Gives the page and what lanestyle and roadstyle say about it.
+pub fn sumo_page(net_xml: &str, kw: serde_json::Map<String, serde_json::Value>) -> Result<(String, Vec<String>)> {
+    use crate::settings::{lane_settings, use_colour};
+    use serde_json::{json, Map, Value};
+    let lanes = crate::sumo::from_sumo_net(net_xml)?;
+    let s = lane_settings(None)?;
+    let mut notes = Vec::new();
+    let rows: Vec<&crate::lanes::Lane> = lanes.rows.iter().collect();
+    let no_class = rows.iter().filter(|l| l.highway.is_none()).count();
+    if no_class > 0 {
+        notes.push(format!("lanestyle.sumo_page: {no_class} lanes have no road class: drawn as unclassified"));
+    }
+    let class = |l: &crate::lanes::Lane| l.highway.clone().unwrap_or_else(|| "unclassified".into());
+    let table: Vec<(Vec<(String, Value)>, Value)> = rows.iter().map(|l| (vec![
+        ("edge".into(), json!(l.lane_id)),
+        ("highway".into(), json!(class(l))),
+        // one label for each road: on its lane 0
+        ("name".into(), json!(if l.connector || l.lane_num != Some(0) { None } else { l.name.clone() })),
+        ("sumo_edge".into(), json!(l.edge_ref)),
+        ("lane_id".into(), json!(l.lane_id)),
+        ("use".into(), json!(l.use_)),
+        ("width_m".into(), json!(l.width_m)),
+        ("internal".into(), json!(l.connector)),
+        // the drawing order: the internal lanes (0) under the lanes of the roads (1), each with its outline
+        ("level".into(), json!(if l.connector { 0 } else { 1 })),
+        // flat ends: a SUMO lane ends where its junction begins
+        ("cap".into(), json!(true)),
+    ], json!({"type": "LineString", "coordinates": l.geometry}))).collect();
+    let bytes = roadstyle_io::write::parquet(|| table.iter().map(|(p, g)| roadstyle_io::write::Row {
+        id: None,
+        props: p.iter().map(|(k, v)| (k.as_str().into(), v.clone().into())).collect(),
+        geometry: Some(g.clone().into()),
+    }), true).map_err(|e| e.to_string())?;
+    let roads = roadstyle::read::read_roads(bytes, "geometry").map_err(|e| e.to_string())?;
+    // lane_items' look: every class of amber in the car lane colour; each lane in the colour of its use
+    let auto = s["colors"]["auto"].clone();
+    let pal: Map<String, Value> = amber()?.into_iter().map(|(c, v)| {
+        let mut v = v.as_object().cloned().unwrap_or_default();
+        v.insert("fill".into(), auto.clone());
+        (c, Value::Object(v))
+    }).collect();
+    let classes: std::collections::BTreeSet<String> = rows.iter().map(|l| class(l)).collect();
+    let colours: Map<String, Value> = rows.iter().map(|l| (l.lane_id.clone(), json!(use_colour(&s, l.use_.as_deref().unwrap_or("auto"))))).collect();
+    let mut args = Map::new();
+    for (k, v) in [("edge_id_col", json!("edge")), ("name", json!("SUMO lanes · map")), ("basemap", json!("blank")), ("filter_control", json!(false)),
+                   ("road_popup", json!(["name", "highway", "sumo_edge", "lane_id", "use", "width_m", "internal"])),
+                   ("width_m_col", json!("width_m")), ("width_m_zoom", json!(0)), ("casing_m", s["casing_m"].clone()),
+                   ("casing_min_px", s["casing_min_px"].clone()), ("arrows", json!(false)), ("palette", json!("lanestyle_editor")),
+                   ("settings", json!({"palettes": {"lanestyle_editor": pal}, "config": {"single_line_classes": classes,
+                       "labels": {"color": "#333333", "halo_color": "#ffffff", "halo_width": 1.5, "size": [[15, 10], [17, 12], [19, 15], [21, 20], [22, 24]]}}})),
+                   ("color_table", Value::Object(colours)), ("color_key", json!("edge")), ("casing_level_col", json!("level")), ("cap_col", json!("cap")),
+                   ("fill_level_col", json!("level"))] {
+        args.insert(k.into(), v);
+    }
+    args.extend(kw);
+    render(roads, args, notes)
+}
+
+/// render_edges(backend="web") of a road table with the keywords `args`: the palette, profile and settings out of the keywords, the class
+/// column, the live page. `notes`: what the caller says, before roadstyle's warnings.
+fn render(roads: roadstyle::RoadTable, mut args: serde_json::Map<String, serde_json::Value>, mut notes: Vec<String>) -> Result<(String, Vec<String>)> {
+    use serde_json::{json, Value};
     let palette = args.remove("palette").unwrap_or(json!("amber"));
     let profile = args.remove("profile").unwrap_or(Value::Null);
     let settings = args.remove("settings").unwrap_or(Value::Null);
@@ -152,7 +219,6 @@ pub fn lane_page(area: &Path, gmns: &str, source: &str, connectors: bool, kw: se
         }
     }
     let page = roadstyle::page_options::page_from(roads, None, &look, &o, &given).map_err(|e| e.to_string())?;
-    let mut notes = it.notes;
     notes.extend(page.warnings);
     let html = page.html.replacen("__MAPLIBRE_CSS__", roadstyle::assets::text!("vendor/maplibre-gl.css"), 1)
         .replacen("__MAPLIBRE_JS__", &roadstyle::assets::text!("vendor/maplibre-gl.js").replace("</script>", "<\\/script>"), 1);

@@ -30,3 +30,7 @@ required-features = ["page"]
 [[example]]
 name = "lane_page"
 required-features = ["page"]
+
+[[example]]
+name = "sumo_page"
+required-features = ["page"]
