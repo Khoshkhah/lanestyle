@@ -41,8 +41,13 @@ Rust is the design; Python only calls it. The crates are in `rust/`, as roadstyl
 
 `tests/golden/make_golden.py` made the golden files from the Python lanestyle 0.3.1 (commit 38995c1, with roadstyle 0.25.0) on
 Monaco and Tartu (`data/golden-2026-11-18/`, with their input files and `SHA256SUMS`). `rust/lanestyle/examples/golden.rs` compares
-the Rust output with them: coordinates to 1 mm, all other values exactly. Never edit a golden file to pass a test. The Monaco set is
-in the pre-release `golden-data` for CI (`.github/workflows/rust.yml`).
+the Rust output with them: coordinates to 1 mm, all other values exactly. Never edit a golden file to pass a test. CI runs the Monaco set when the
+pre-release `golden-data` has it (`.github/workflows/rust.yml`). To make it (from `data/`):
+
+```bash
+tar -czf monaco-golden-2026-11-18.tar.gz golden-2026-11-18/{monaco.duckdb,monaco_gmns.duckdb,monaco.levels,monaco_roads.parquet,monaco_*.json,SHA256SUMS}
+gh release create golden-data --repo Khoshkhah/lanestyle --prerelease --title "Golden data of the Rust port" monaco-golden-2026-11-18.tar.gz
+```
 
 ## Constraints (agreed with Kaveh)
 

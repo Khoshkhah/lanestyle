@@ -125,6 +125,11 @@ fn main() {
                 all &= report("roadstyle's amber palette", &json!(amber), &json!(mine));
                 let wt = |ids: &[i64]| gmns::width_tags(&c, src, ids).map(|m| m.into_iter().collect());
                 let it = editor::lane_items(&roads, has_modes, &st, &s, &amber, &wt).unwrap();
+                if let Ok(d) = std::env::var("GOLDEN_DUMP") {
+                    // the Rust road table's widths and lines, for a page made by roadstyle's Python from the same table
+                    let lines: Vec<Value> = it.geometry.iter().map(|l| json!({"type": "LineString", "coordinates": l})).collect();
+                    std::fs::write(format!("{d}/{area}_rust_items.json"), json!({"kw": it.kw, "width_m": it.width_m, "geometry": lines}).to_string()).unwrap();
+                }
                 for n in &it.notes {
                     println!("    {n}");
                 }

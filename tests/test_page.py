@@ -1,14 +1,17 @@
 """The editor's hook and the lane page through the Python package (the Rust engine draws). The rules themselves are tested in Rust
 (rust/lanestyle/tests/rules.rs) and against the Python goldens (rust/lanestyle/examples/golden.rs)."""
-import json
-
 from test_lanestyle import _dbs
 
 import lanestyle as ls
 
 
-def _style(html):
-    return json.loads(html.split("const style = ", 1)[1].split(", BASEMAPS", 1)[0])
+def _unpacked(html):
+    """The page's text with each gzipped part (base64) unpacked."""
+    import base64
+    import gzip
+    import re
+
+    return html + "".join(gzip.decompress(base64.b64decode(m)).decode() for m in re.findall(r'(H4sI[A-Za-z0-9+/=]+)', html))
 
 
 def test_the_level_editor_hook_puts_each_lane_on_its_edge_of_the_editor(tmp_path, monkeypatch, capsys):
@@ -76,8 +79,9 @@ def test_the_lane_page_is_the_editors_drawing_without_its_panel(tmp_path):
                               "cycling": [False] * 3, "lanes": [2, 1, 1], "modes": ["driving"] * 3},
                              geometry=[LineString([a, b]), LineString([b, c]), LineString([b, a])], crs=4326)
     make_area(edges, tmp_path / "area", id_col="edge_id")
-    html = ls.lane_page(tmp_path / "area", str(gmns), str(src)).html
-    assert "roads-simple" in html and '"lane_id"' in html and "1_2" in html         # the one road layer, its lane items
+    html = ls.lane_page(tmp_path / "area", str(gmns), str(src), tiles=False).html
+    data = _unpacked(html)                                                          # the page keeps its data gzipped
+    assert "roads-simple" in data and '"lane_id"' in data and "1_2" in data         # the one road layer, its lane items
     assert "lv-apply" not in html and "Lanes" in html                               # no editor panel; the page's own name
 
 

@@ -10,8 +10,8 @@ description = "Lane-level road maps on roadstyle: the lanes, lane lines, turn ar
 serde_json.workspace = true
 geographiclib-rs = "0.2"            # the geodesics of PROJ's aeqd (the marks are placed in metres around a lane's first point)
 # the lane page: the level area's roads as roadstyle's level editor draws them, and roadstyle's page (the same rev as duckOSM's)
-roadstyle = { git = "https://github.com/Khoshkhah/roadstyle.git", rev = "9df3ceda9d038a5c3a8be4702aaa6ed4422de9aa", optional = true }
-roadstyle-io = { git = "https://github.com/Khoshkhah/roadstyle.git", rev = "9df3ceda9d038a5c3a8be4702aaa6ed4422de9aa", optional = true }   # write::parquet: the page's road table
+roadstyle = { git = "https://github.com/Khoshkhah/roadstyle.git", rev = "c9190e691f3c39c678181ed6f08170531a101891", optional = true }
+roadstyle-io = { git = "https://github.com/Khoshkhah/roadstyle.git", rev = "c9190e691f3c39c678181ed6f08170531a101891", optional = true }   # write::parquet: the page's road table
 yaml-rust2 = { version = "0.13", optional = true }   # roadstyle's palette file (amber.yaml), as roadstyle reads it
 duckdb = { version = "=1.10506.1", features = ["bundled"], optional = true }   # the GMNS reader (the version of duckOSM's: one DuckDB there)
 
