@@ -12,3 +12,6 @@ docs/maps/*
 !docs/maps/monaco.html
 renders/
 site/
+rust/target/
+src/lanestyle/_rust*.so
+src/lanestyle/_rust*.pyd

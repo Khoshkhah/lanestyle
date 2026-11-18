@@ -1,0 +1,54 @@
+name: Rust
+
+# The Rust engine in rust/: the rule tests, clippy, the WebAssembly build of the rules, and the golden files of the Python lanestyle on
+# Monaco (tests/golden/make_golden.py; the pre-release golden-data has them and their inputs).
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_BUILD_JOBS: "4"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy --target wasm32-unknown-unknown
+          rustup default stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: rust-${{ hashFiles('rust/Cargo.lock') }}
+      - name: The rules (no files, no page)
+        run: cargo test --release --locked -p lanestyle
+      - name: The rules build for WebAssembly
+        run: cargo build --release --locked -p lanestyle --target wasm32-unknown-unknown
+      - name: Clippy (the rules, the reader and the page)
+        run: cargo clippy --release --locked -p lanestyle --features page --all-targets -- -D warnings
+      - name: The golden files of the Python lanestyle, Monaco (when the pre-release golden-data has them)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release download golden-data --repo "$GITHUB_REPOSITORY" --pattern "monaco-golden-2026-11-18.tar.gz" --dir ..; then
+            echo "::notice::no pre-release golden-data: the golden check did not run (make it with the command in AGENTS.md)"
+            exit 0
+          fi
+          tar -xzf ../monaco-golden-2026-11-18.tar.gz -C ..
+          (cd ../golden-2026-11-18 && sha256sum -c --ignore-missing SHA256SUMS)
+          cargo run --release --locked -p lanestyle --features page --example golden -- ../golden-2026-11-18 monaco

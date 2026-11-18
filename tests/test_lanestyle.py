@@ -177,49 +177,12 @@ def _crossing(lane_id="2_1", painted=True, to_left=True, start=200.0, end=203.0)
                          "crossing_type": ["marked"], "source": ["way"], "cgeom": [rect]})
 
 
-def test_a_link_with_no_road_class_is_not_drawn(tmp_path):
-    """A ferry in the walking network has no road class (highway null): it is no lane."""
-    from lanestyle.settings import _roads_only
-
-    gmns, _ = _with_walking(tmp_path)
-    lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
-    lanes.loc[lanes["lane_id"] == "5_1", "highway"] = None
-    kept = set(_roads_only(lanes)["lane_id"])
-    assert "5_1" not in kept and "1_1" in kept and len(kept) == len(lanes) - 1
-
-
-def test_default_widths_by_use():
-    import pandas as pd
-
-    from lanestyle.settings import _widths, lane_settings
-    g = pd.DataFrame({"use": ["auto", "walk", "bike", "bike", "bike", "walk"],
-                      "lane_num": [1, 1, 2, 1, 1, 1], "lanes": [2, None, 1, 2, None, 1],
-                      "width_m": [None, None, None, None, None, 2.5]})
-    # auto 3.25; walk 2.0; a bike lane beyond the 1 motor lane 1.5; a bike lane that is one of 2 motor lanes 3.25;
-    # a bike lane on a cycleway (no motor lanes) 1.5; a tagged width is kept
-    assert _widths(g, lane_settings()).tolist() == [3.25, 2.0, 1.5, 3.25, 1.5, 2.5]
-    assert _widths(g, lane_settings({"lanes": {"width_m_by_use": {"walk": 1.2}}})).tolist()[1] == 1.2
-    # without lane_num / lanes the bike rule cannot tell, so a bike lane keeps the default
-    assert _widths(g.drop(columns=["lane_num", "lanes"]), lane_settings()).tolist()[2] == 3.25
-
-
-def test_several_modes_colour_a_road_cars_do_not_use_by_who_uses_it(tmp_path):
-    """2026-10-09, one rule with the level editor: a lane of a road cars use keeps its use's colour (a street cars and pedestrians
-    share is a car road, a bus lane keeps its own); a lane of a road cars do not use takes the colour of who uses it (a footway: walk).
-    One mode: the lane's use."""
-    from lanestyle.settings import _colour_groups, lane_settings
+def test_several_modes_say_which_modes_have_each_link(tmp_path):
+    """With several modes read, the ``modes`` column says which networks have each link (a street cars and pedestrians share)."""
     gmns, src = _with_walking(tmp_path)
     lanes, turns = ls.from_gmns(gmns, modes=("driving", "walking"))
     r = lanes.set_index("lane_id")
     assert r.loc["2_1", "modes"] == "driving,walking" and r.loc["5_1", "modes"] == "walking" and r.loc["1_1", "modes"] == "driving"
-    g = lanes.assign(use=lanes["use"].fillna("auto"))
-    col, palette, rows = _colour_groups(g, lane_settings())
-    c = dict(zip(g["lane_id"], g[col].map(palette), strict=True))
-    assert (c["1_1"], c["1_2"], c["2_1"], c["5_1"]) == ("#a3a3a3", "#d6336c", "#a3a3a3", "#f0cb8c") and c["3_1"] == c["1_1"]
-    assert "pedestrians only" in [label for label, _ in rows] and "car lanes" in [label for label, _ in rows]
-    one = ls.from_gmns(gmns)[0]
-    col1, _, rows1 = _colour_groups(one.assign(use=one["use"].fillna("auto")), lane_settings())
-    assert col1 == "use" and "pedestrians only" not in [label for label, _ in rows1]
 
 def test_a_footway_join_is_read_from_duckosms_walking_connectors_not_made_here(tmp_path):
     """The join of a footway to a road lane is data (duckOSM `gmns_walking.lane_connector`, docs/design/gmns_walk_joins.md): lanestyle keeps it when both its lanes are kept,
@@ -240,49 +203,14 @@ def test_a_footway_join_is_read_from_duckosms_walking_connectors_not_made_here(t
     assert c.loc["2_1>5_1", "from_lane"] == "2_1" and c.loc["2_1>5_1", "width_m"] == 2.0
 
 
-def _corner_gap_m(d=3.0, cw=1.5):
-    """A lane going east, a lane going north and a narrow connector turning from one to the other (a left turn at a corner): the longest stretch of
-    the drawn surface's boundary near the connector that has no outline line within 15 cm, in metres."""
-    import math
-
-    import geopandas as gpd
-    import shapely
-    from lanestyle.lines import lane_lines
-    from shapely.geometry import LineString, Point
-
-    kx = math.cos(math.radians(59.3))
-    ll = lambda pts: LineString([(18.0 + x / (111320 * kx), 59.3 + y / 111320) for x, y in pts])      # noqa: E731  metres from (18.0, 59.3)
-    t = [i / 8 for i in range(9)]
-    turn = [(2 * (1 - u) * u * d + u ** 2 * d, u ** 2 * d) for u in t]   # (0,0) -> (d,d)
-    rows = [dict(lane_id="a", link_id=1, lane_num=1, width_m=3.0, connector=False, from_node_id=1, to_node_id=2, highway="service", geometry=ll([(-20, 0), (0, 0)])),
-            dict(lane_id="b", link_id=2, lane_num=1, width_m=3.0, connector=False, from_node_id=2, to_node_id=3, highway="service", geometry=ll([(d, d), (d, d + 20)])),
-            dict(lane_id="c", link_id=3, lane_num=1, width_m=3.0, connector=False, from_node_id=2, to_node_id=4, highway="service", geometry=ll([(30, -30), (50, -30)])),   # a third link at node 2 (a junction: lane lines stop short of it), far from the corner
-            dict(lane_id="a>b", link_id=1, lane_num=1, width_m=cw, connector=True, from_lane="a", to_lane="b", from_node_id=1, to_node_id=2, highway="service", geometry=ll(turn))]
-    lanes = gpd.GeoDataFrame(rows, crs=4326)
-    fc = lane_lines(lanes, ls.lane_settings())
-    from shapely.geometry import shape
-    to_m = lambda g: LineString([((x - 18.0) * 111320 * kx, (y - 59.3) * 111320) for x, y in g.coords])      # noqa: E731
-    lines = shapely.union_all([to_m(q) for f in fc["features"] if f["properties"]["t"] == "edge" for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])])])
-    surface = shapely.union_all([Point(0, 0).buffer(1.5), Point(d, d).buffer(1.5), LineString([(-20, 0), (0, 0)]).buffer(1.5, cap_style="flat"),
-                                 LineString([(d, d), (d, d + 20)]).buffer(1.5, cap_style="flat"), LineString(turn).buffer(cw / 2)])
-    near = surface.boundary.intersection(Point(d / 2, d / 2).buffer(2.5))
-    pts = [near.interpolate(i / 10) for i in range(int(near.length * 10))]
-    bare = [p for p in pts if lines.distance(p) > 0.15]
-    return len(bare) / 10                                   # metres of boundary with no line
-
-
 def test_a_roundabouts_ring_is_read_from_the_source_junction_tag(tmp_path):
-    import duckdb
-
-    from lanestyle.gmns import _ring_links
-
-    db = tmp_path / "src.duckdb"
-    con = duckdb.connect(str(db))
-    con.execute("CREATE SCHEMA driving; CREATE TABLE driving.edges (edge_id BIGINT, junction VARCHAR)")
-    con.execute("INSERT INTO driving.edges VALUES (1, 'roundabout'), (2, NULL), (3, 'circular')")
+    gmns, src = _dbs(tmp_path)
+    con = duckdb.connect(str(src))
+    con.execute("ALTER TABLE driving.edges ADD COLUMN junction VARCHAR; UPDATE driving.edges SET junction = 'roundabout' WHERE edge_id = 2")
     con.close()
-    assert sorted(_ring_links(db, "driving")) == [1, 3] and _ring_links(None, "driving") == []
-
+    r = ls.from_gmns(gmns, source_db=src)[0].set_index("lane_id")
+    assert bool(r.loc["2_1", "roundabout"]) and not r.loc["1_1", "roundabout"]
+    assert not ls.from_gmns(gmns)[0]["roundabout"].any()              # no source file: no ring known
 
 def test_walkers_stepping_off_a_road_are_no_turn_of_the_car_lane(tmp_path):
     """Kaveh (2026-10-03, lane 8804188488117379077_1): the walking mode's movement from a road onto a footway gave the car lane a left / right turn (1,443 of 8,502 car-lane turns in Monaco).

@@ -1,0 +1,32 @@
+[package]
+name = "lanestyle"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lane-level road maps on roadstyle: the lanes, lane lines, turn arrows, BUS and bike marks, zebras and sidewalks of duckOSM's GMNS lanes"
+
+[dependencies]
+serde_json.workspace = true
+geographiclib-rs = "0.2"            # the geodesics of PROJ's aeqd (the marks are placed in metres around a lane's first point)
+# the lane page: the level area's roads as roadstyle's level editor draws them, and roadstyle's page (the same rev as duckOSM's)
+roadstyle = { git = "https://github.com/Khoshkhah/roadstyle.git", rev = "53135c49e3c575bb3f0edb3c2b0816f80f484586", optional = true }
+roadstyle-io = { git = "https://github.com/Khoshkhah/roadstyle.git", rev = "53135c49e3c575bb3f0edb3c2b0816f80f484586", optional = true }   # write::parquet: the page's road table
+yaml-rust2 = { version = "0.13", optional = true }   # roadstyle's palette file (amber.yaml), as roadstyle reads it
+duckdb = { version = "=1.10506.1", features = ["bundled"], optional = true }   # the GMNS reader (the version of duckOSM's: one DuckDB there)
+
+[features]
+duckdb = ["dep:duckdb"]
+page = ["dep:roadstyle", "dep:roadstyle-io", "dep:yaml-rust2", "duckdb"]
+
+[[example]]
+name = "area_roads"
+required-features = ["page"]
+
+[[example]]
+name = "golden"
+required-features = ["page"]
+
+[[example]]
+name = "lane_page"
+required-features = ["page"]

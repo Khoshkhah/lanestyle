@@ -57,8 +57,8 @@ or `python lane_page.py monaco.levels monaco_gmns.duckdb monaco.duckdb monaco.ht
   A road cars do not use (a footway, a cycleway) is drawn in the colour of who uses it.
 
 lanestyle draws nothing of its own: roadstyle draws every road, lanestyle only reads duckOSM's GMNS lanes and adds them to the roads
-as items. Settings (colours, widths, dashes, marks): `src/lanestyle/data/lanestyle.json`, overridden by a `lanestyle.json` in the
-current folder.
+as items. Settings (colours, widths, dashes, marks): `rust/lanestyle/data/lanestyle.json`, overridden by a `lanestyle.json` in the
+current folder. The rules are Rust (the crate `rust/lanestyle`); the Python package calls them.
 
 ## For AI agents
 

@@ -1,13 +1,46 @@
 name: Tests
 
+# The Python package on its Rust engine: one wheel (abi3) built here, the Python tests on it with each Python.
 on:
   push:
     branches: [master]
   pull_request:
   workflow_dispatch:
 
+env:
+  CARGO_BUILD_JOBS: "4"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: wheel-${{ hashFiles('rust/Cargo.lock') }}
+      - name: Build the wheel (maturin builds the extension lanestyle._rust)
+        run: |
+          pip install "maturin>=1.8,<2"
+          maturin build --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/
+
   test:
+    needs: wheel
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -19,9 +52,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - name: Install
-        run: pip install -e ".[dev]"
-      - name: Tests
-        run: pytest -q
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel
+          path: dist/
+      - name: Install the wheel and the test tools
+        run: pip install dist/*.whl pytest "duckdb>=1.5,<1.6" "roadstyle>=0.29"   # duckdb: the version of the bundled DuckDB (it reads its files)
+      - name: Tests (on the installed wheel, not the source folder)
+        run: pytest -q -p no:cacheprovider tests

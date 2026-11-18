@@ -14,7 +14,7 @@ https://github.com/Khoshkhah/roadstyle/blob/main/skills/roadstyle/SKILL.md.
 
 ## Install and data
 
-`pip install lanestyle "duckosm[levels]"` (brings roadstyle, geopandas, shapely 2, duckdb).
+`pip install lanestyle "duckosm[levels]"` (brings geopandas, shapely 2, pandas; roadstyle and DuckDB are in lanestyle's Rust extension).
 
 ```bash
 duckosm build --pbf area.osm.pbf -o area.duckdb -m driving -m walking -m cycling
@@ -31,7 +31,7 @@ m = ls.lane_page("area.levels", "area_gmns.duckdb", "area.duckdb")
 m.save("lanes.html")
 ```
 
-The page is blank by default (no base map, no Roads box, no Tunnels slider); extra keywords go to `roadstyle.render_edges` (`basemap=`, `filter_control=True`, `tunnel_control=True`, `name=` …).
+The page is blank by default (no base map, no Roads box, no Tunnels slider); extra keywords go to roadstyle's page (`render_edges`' keywords) (`basemap=`, `filter_control=True`, `tunnel_control=True`, `name=` …).
 `connectors=True` adds the lane connectors through the junctions, unseen (route highlights).
 The same drawing in roadstyle's editor: `LANESTYLE_GMNS=area_gmns.duckdb LANESTYLE_SOURCE_DB=area.duckdb
 roadstyle-levels edit area.levels --items lanestyle.editor:lane_items`.
@@ -48,7 +48,7 @@ roadstyle-levels edit area.levels --items lanestyle.editor:lane_items`.
 
 ## Settings
 
-`src/lanestyle/data/lanestyle.json`, overridden by a `lanestyle.json` in the current folder: colours
+`rust/lanestyle/data/lanestyle.json`, overridden by a `lanestyle.json` in the current folder: colours
 (`colors.auto/bus/bike/walk`, `colors.groups`), widths (`default_width_m`, `width_m_by_use`, `path_width_m`,
 `casing_m`, `centre_line_m`), `lines`, `arrows`, `zebra`, `sidewalk`.
 

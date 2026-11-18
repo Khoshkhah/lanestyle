@@ -36,7 +36,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - run: pip install ".[docs]"
+      - run: pip install "mkdocs>=1.6,<2" "mkdocs-material>=9.5,<10" "mkdocs-llmstxt>=0.5,<0.6"   # the site has no API pages: no build of the Rust engine
 
       # The live map (docs/maps/monaco.html) is committed, built locally by docs/build_maps.py: the GMNS export needs SUMO.
 
