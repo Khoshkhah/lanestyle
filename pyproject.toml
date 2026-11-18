@@ -28,7 +28,7 @@ classifiers = [
 dependencies = ["geopandas", "shapely>=2", "pandas"]
 
 [project.optional-dependencies]
-dev = ["pytest", "duckdb", "roadstyle>=0.29"]   # the tests make small GMNS files (duckdb) and level areas (roadstyle)
+dev = ["pytest", "duckdb>=1.5,<1.6", "roadstyle>=0.29"]   # the tests make small GMNS files (duckdb) and level areas (roadstyle)
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "mkdocs-llmstxt>=0.5,<0.6"]
 
 [project.urls]

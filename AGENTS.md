@@ -74,6 +74,9 @@ The Python tests make a tiny GMNS file, source file and level area in `tmp_path`
 
 ## Gotchas
 
+- The extension has DuckDB 1.5 in it (the version of duckOSM's Rust). It cannot read a file that a newer DuckDB wrote (2.0: storage
+  version 69). The tests make their files with Python's duckdb 1.5.
+
 - `link_id` is duckOSM's BIGINT hash: keep it `Int64`, never float64. roadstyle turns large ints into
   strings in the page; the page's feature ids are roadstyle's, never `link_id`.
 - Lane 1 is the leftmost lane in the direction of travel. The centre line sits at lane 1's left edge:

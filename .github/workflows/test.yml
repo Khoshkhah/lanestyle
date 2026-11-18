@@ -57,6 +57,6 @@ jobs:
           name: wheel
           path: dist/
       - name: Install the wheel and the test tools
-        run: pip install dist/*.whl pytest duckdb "roadstyle>=0.29"
+        run: pip install dist/*.whl pytest "duckdb>=1.5,<1.6" "roadstyle>=0.29"   # duckdb: the version of the bundled DuckDB (it reads its files)
       - name: Tests (on the installed wheel, not the source folder)
         run: pytest -q -p no:cacheprovider tests
