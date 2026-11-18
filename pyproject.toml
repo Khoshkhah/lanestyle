@@ -1,10 +1,11 @@
 [build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
+# one wheel with the Rust engine in it (rust/lanestyle-py, abi3: the module lanestyle._rust), as roadstyle
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
 
 [project]
 name = "lanestyle"
-version = "0.3.2"
+version = "0.4.0"
 description = "Lane-level road maps on roadstyle: every road as wide as its lanes, with bus and bike lanes, lane lines, turn arrows, zebra crossings and sidewalks, from duckOSM's GMNS lanes"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,10 +24,11 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS",
   "Topic :: Scientific/Engineering :: Visualization",
 ]
-dependencies = ["roadstyle>=0.24.2", "geopandas", "shapely>=2", "duckdb", "pandas"]
+# roadstyle (its Rust engine) and DuckDB are in the extension module; Python makes the tables
+dependencies = ["geopandas", "shapely>=2", "pandas"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "duckdb", "roadstyle>=0.29"]   # the tests make small GMNS files (duckdb) and level areas (roadstyle)
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "mkdocs-llmstxt>=0.5,<0.6"]
 
 [project.urls]
@@ -36,8 +38,8 @@ Issues = "https://github.com/Khoshkhah/lanestyle/issues"
 roadstyle = "https://github.com/Khoshkhah/roadstyle"
 duckOSM = "https://github.com/Khoshkhah/duckOSM"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-lanestyle = ["data/*.json"]
+[tool.maturin]
+python-source = "src"
+module-name = "lanestyle._rust"
+manifest-path = "rust/lanestyle-py/Cargo.toml"
+exclude = ["src/lanestyle/_rust.abi3.so", "src/lanestyle/**/__pycache__/**"]

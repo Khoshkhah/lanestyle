@@ -7,6 +7,9 @@ use crate::strokes;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+/// A road: its two end nodes (the two directions of a street are one road).
+type Road = (Option<i64>, Option<i64>);
+
 const TURNS: [&str; 3] = ["left", "right", "uturn"];
 
 /// The move arrow of a lane: its left / right / thru / uturn, or None. A thru-only lane has one only beside a lane that turns.
@@ -64,7 +67,7 @@ pub fn mark_strokes(lanes: &[&Lane], turns: &[Turn], s: &Value, shifts: &[f64], 
         for l in lanes.iter().filter(|l| !matches!(l.use_.as_deref().unwrap_or("auto"), "walk" | "bike")) {
             pairs.insert((l.from_node_id, l.to_node_id));
         }
-        let mut roads_at: HashMap<Option<i64>, HashSet<(Option<i64>, Option<i64>)>> = HashMap::new();
+        let mut roads_at: HashMap<Option<i64>, HashSet<Road>> = HashMap::new();
         for (a, b) in pairs {
             let road = if a <= b { (a, b) } else { (b, a) };       // the two directions of a road: one road
             for n in [a, b] {

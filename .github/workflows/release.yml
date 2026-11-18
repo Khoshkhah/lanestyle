@@ -3,30 +3,58 @@ name: Release to PyPI
 # Publish on a version tag (v0.1.0, ...) via PyPI trusted publishing: no API token stored.
 # One-time setup on pypi.org: add a "trusted publisher" for this repo and workflow
 # (project: lanestyle, owner: Khoshkhah, workflow: release.yml, environment: pypi).
+# A release branch (release-*) and a run by hand build the wheels and the sdist only, to check them before the tag.
 on:
   push:
     tags: ["v*"]
+    branches: ["release-*"]
+  workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  # one wheel with the Rust engine in it for each platform (abi3: one wheel for every Python from 3.10)
+  wheels:
+    strategy:
+      matrix:
+        include:
+          - {os: ubuntu-latest, target: x86_64}
+          - {os: ubuntu-latest, target: aarch64}
+          - {os: macos-latest, target: x86_64}
+          - {os: macos-latest, target: aarch64}
+          - {os: windows-latest, target: x64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build sdist + wheel
-        run: |
-          pip install build
-          python -m build
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --profile dist --out dist
+          manylinux: auto
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: wheel-${{ matrix.os }}-${{ matrix.target }}
+          path: dist/
+
+  sdist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
           path: dist/
 
   publish:
-    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [wheels, sdist]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi
@@ -35,6 +63,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
           path: dist/
+          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1

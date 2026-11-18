@@ -111,6 +111,9 @@ pub fn strokes(lanes: &Lanes, turns: &[Turn], s: &Value, connectors: bool, tags:
     Ok(Strokes { lanes: lane_fc, lines: line_fc, marks: marks_fc, width, lines_of, connectors: conn_fc, zebras: zebra_fc, sidewalks: side_fc, special })
 }
 
+/// The OSM `width` tag of each of these ways (a way without one is not in the map).
+pub type WidthTags<'a> = dyn Fn(&[i64]) -> Result<HashMap<i64, String>, String> + 'a;
+
 /// One row of the editor's road table (one edge): what `lane_items` reads of it.
 #[derive(Clone, Debug, Default)]
 pub struct RoadRow {
@@ -141,7 +144,7 @@ pub fn way_of_ref(r: &str) -> Option<i64> {
 /// in metres, else `path_width_m` by its class) on the lanes' line, in the car lane colour; the road's own items; the render keywords.
 /// `roads`: the editor's table (`has_modes`: it has the column `modes`); `st`: `strokes`; `amber`: roadstyle's palette "amber" (`{class: style}`); `width_tag`: the OSM width tag
 /// of a way (the roads without lanes).
-pub fn lane_items(roads: &[RoadRow], has_modes: bool, st: &Strokes, s: &Value, amber: &Map<String, Value>, width_tag: &dyn Fn(&[i64]) -> Result<HashMap<i64, String>, String>)
+pub fn lane_items(roads: &[RoadRow], has_modes: bool, st: &Strokes, s: &Value, amber: &Map<String, Value>, width_tag: &WidthTags)
                   -> Result<Items, String> {
     let road_of: HashMap<&str, &str> = roads.iter().map(|r| (r.edge.as_str(), r.road.as_str())).collect();
     let mut notes = Vec::new();

@@ -15,3 +15,10 @@ license = "MIT"
 [workspace.dependencies]
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 lanestyle = { path = "lanestyle" }
+
+# what is shipped (the wheels): release with one codegen unit and fat LTO, `--profile dist`; the tests use release
+[profile.dist]
+inherits = "release"
+lto = true
+codegen-units = 1
+strip = true

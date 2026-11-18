@@ -364,7 +364,7 @@ pub fn zebra_strokes(g: &[&Lane], cr: Option<&[Crossing]>, st: &Value, colour: &
             let a = [x0 + dx * mid, y0 + dy * mid];
             lines.push(vec![a, [a[0] + wx, a[1] + wy]]);
             let key = |x: &(f64, f64, i64)| if x.0 <= mid && mid <= x.1 { 0.0 } else { (mid - x.0).abs().min((mid - x.1).abs()) };
-            let best = under.iter().fold(None::<&(f64, f64, i64)>, |b, x| match b { Some(b) if !(key(x) < key(b)) => Some(b), _ => Some(x) });
+            let best = under.iter().fold(None::<&(f64, f64, i64)>, |b, x| match b { Some(b) if key(x).partial_cmp(&key(b)) != Some(std::cmp::Ordering::Less) => Some(b), _ => Some(x) });
             links.push(best.map_or(0, |b| b.2));
         }
     }
