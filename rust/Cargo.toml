@@ -1,0 +1,17 @@
+# lanestyle in Rust: the crate `lanestyle` (the rules: the lane table, the items, the marks; with the feature `page`, the lane page on
+# roadstyle) and `lanestyle-py`, the Python binding (the module lanestyle._rust, PyO3, abi3).
+[workspace]
+members = ["lanestyle", "lanestyle-py"]
+# cargo test at the root: the library. Not the Python extension (it needs a Python to link).
+default-members = ["lanestyle"]
+resolver = "2"
+
+[workspace.package]
+version = "0.4.0"
+repository = "https://github.com/Khoshkhah/lanestyle"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+lanestyle = { path = "lanestyle" }

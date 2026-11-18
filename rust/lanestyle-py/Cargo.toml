@@ -1,0 +1,17 @@
+[package]
+name = "lanestyle-py"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Python binding of lanestyle: the module lanestyle._rust (PyO3, abi3)"
+
+[lib]
+name = "_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+lanestyle = { workspace = true, features = ["page"] }
+serde_json.workspace = true
+pyo3 = { version = "0.30", features = ["abi3-py39", "extension-module"] }
+
