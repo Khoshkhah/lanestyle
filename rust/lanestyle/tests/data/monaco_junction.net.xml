@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- one junction of duckosm sumo on Monaco (tests/data/monaco.osm.pbf): Boulevard Princesse Charlotte at Rue des Iris -->
+<net version="1.20">
+    <location netOffset="-371582.04,-4842578.64" convBoundary="0.00,0.00,2761.58,2925.08" origBoundary="7.405393,43.725304,7.439248,43.751904" projParameter="+proj=utm +zone=32 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"/>
+
+    <edge id=":258071979_0" function="internal">
+        <lane id=":258071979_0_0" index="0" allow="bus" speed="13.89" length="12.80" width="3.25" shape="1607.34,1753.40 1600.14,1743.06"/>
+        <lane id=":258071979_0_1" index="1" speed="13.89" length="12.80" width="3.25" shape="1610.02,1751.56 1602.81,1741.20"/>
+        <lane id=":258071979_0_2" index="2" speed="13.89" length="12.80" width="3.25" shape="1610.02,1751.56 1608.27,1748.14 1607.75,1745.44 1607.24,1742.74 1605.47,1739.33"/>
+    </edge>
+    <edge id=":258071979_3" function="internal">
+        <lane id=":258071979_3_0" index="0" speed="3.68" length="4.75" width="3.25" shape="1610.02,1751.56 1609.99,1750.09 1610.43,1749.30 1611.33,1749.17 1612.69,1749.71"/>
+    </edge>
+    <edge id=":258071979_4" function="internal">
+        <lane id=":258071979_4_0" index="0" speed="11.85" length="10.08" width="3.25" shape="1612.06,1740.03 1611.64,1743.02 1611.23,1745.19 1611.39,1747.20 1612.69,1749.71"/>
+    </edge>
+    <edge id=":258071979_5" function="internal">
+        <lane id=":258071979_5_0" index="0" speed="6.80" length="19.07" width="3.25" shape="1608.69,1737.55 1609.83,1744.46 1609.23,1747.37 1606.89,1746.28 1602.81,1741.20"/>
+        <lane id=":258071979_5_1" index="1" speed="5.16" length="10.20" width="3.25" shape="1608.69,1737.55 1609.29,1741.20 1608.95,1742.71 1607.68,1742.09 1605.47,1739.33"/>
+    </edge>
+    <edge id="1121504428381278934" from="4438769955" to="258071979" name="Rue des Iris" priority="1" type="residential" spreadType="center" length="33.08" shape="1601.63,1717.13 1607.45,1728.86 1609.88,1736.01 1610.61,1739.24 1610.41,1742.37 1609.07,1745.15 1606.93,1747.09">
+        <lane id="1121504428381278934_0" index="0" speed="13.89" length="33.08" width="3.00" shape="1603.06,1716.64 1608.84,1728.28 1611.33,1735.60 1612.12,1739.12 1612.06,1740.03"/>
+        <lane id="1121504428381278934_1" index="1" speed="13.89" length="33.08" width="3.00" shape="1600.37,1717.97 1606.06,1729.44 1608.43,1736.42 1608.69,1737.55"/>
+    </edge>
+    <edge id="2915946686470406935" from="4970587876" to="258071979" name="Boulevard Princesse Charlotte" priority="3" type="secondary" spreadType="roadCenter" length="17.68" shape="1616.99,1761.64 1612.06,1754.52 1606.93,1747.09">
+        <lane id="2915946686470406935_0" index="0" speed="13.89" length="17.68" width="3.25" shape="1610.17,1757.50 1609.39,1756.37 1607.34,1753.40"/>
+        <lane id="2915946686470406935_1" index="1" speed="13.89" length="17.68" width="3.25" shape="1612.84,1755.65 1612.06,1754.52 1610.02,1751.56"/>
+    </edge>
+    <edge id="3188778506000426711" from="258071979" to="1699777833" name="Boulevard Princesse Charlotte" priority="3" type="secondary" spreadType="center" length="5.40">
+        <lane id="3188778506000426711_0" index="0" allow="bus" speed="13.89" length="5.40" width="3.25" shape="1600.14,1743.06 1600.03,1742.90"/>
+        <lane id="3188778506000426711_1" index="1" speed="13.89" length="5.40" width="3.25" shape="1602.81,1741.20 1602.69,1741.03"/>
+        <lane id="3188778506000426711_2" index="2" speed="13.89" length="5.40" width="3.25" shape="1605.47,1739.33 1605.35,1739.17"/>
+    </edge>
+    <edge id="5399172610000240746" from="258071979" to="4970587876" name="Boulevard Princesse Charlotte" priority="3" type="secondary" spreadType="roadCenter" length="17.68" shape="1606.93,1747.09 1612.06,1754.52 1616.99,1761.64">
+        <lane id="5399172610000240746_0" index="0" speed="13.89" length="17.68" width="3.25" shape="1612.69,1749.71 1614.73,1752.67 1615.52,1753.80"/>
+    </edge>
+
+    <connection from="1121504428381278934" to="5399172610000240746" fromLane="0" toLane="0" via=":258071979_4_0" dir="r" state="M"/>
+    <connection from="1121504428381278934" to="3188778506000426711" fromLane="1" toLane="1" via=":258071979_5_0" dir="l" state="m"/>
+    <connection from="1121504428381278934" to="3188778506000426711" fromLane="1" toLane="2" via=":258071979_5_1" dir="l" state="m"/>
+    <connection from="2915946686470406935" to="3188778506000426711" fromLane="0" toLane="0" via=":258071979_0_0" dir="s" state="M"/>
+    <connection from="2915946686470406935" to="3188778506000426711" fromLane="1" toLane="1" via=":258071979_0_1" dir="s" state="M"/>
+    <connection from="2915946686470406935" to="3188778506000426711" fromLane="1" toLane="2" via=":258071979_0_2" dir="s" state="M"/>
+    <connection from="2915946686470406935" to="5399172610000240746" fromLane="1" toLane="0" via=":258071979_3_0" dir="t" state="m"/>
+</net>

@@ -25,6 +25,8 @@ Rust is the design; Python only calls it. The crates are in `rust/`, as roadstyl
     robust segment test), the UTM zone of geopandas (PROJ's `tmerc`, equal to pyproj to the bit) and PROJ's `aeqd` (geodesics).
   - `lanes.rs`: the lane table (`Lanes`, `Lane`), the turns and the crossings.
   - `gmns.rs` (feature `duckdb`): the reader. `from_gmns`, `read_crossings`, `read_boundary`, the OSM tags of the ways.
+  - `sumo.rs`: the SUMO net reader. `from_sumo_net`: each `<lane>` of a `.net.xml` as a lane row (its shape in lon/lat, width, use, the
+    SUMO lane id); the lanes of the internal edges are connectors. `page::sumo_page` draws them on roadstyle's page (`duckosm sumo-map`).
   - `items.rs`: `link_roads` (one road for each carriageway), `lane_strokes`, `connector_strokes`, `zebra_strokes`,
     `sidewalk_strokes`. Item order: connector -1, lane 0, lines 1, zebra 2, arrows 3.
   - `arrows.rs`: `mark_strokes` (turn arrows, BUS, bike; `docs/design/lane_arrows.md`). `strokes.rs`: their shapes, `place`, the dashes.
