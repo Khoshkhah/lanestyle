@@ -7,8 +7,11 @@ use crate::geo::{Line, Utm};
 use crate::lanes::{Lane, Lanes};
 use std::collections::HashMap;
 
+/// The attributes of one tag.
+type Attrs<'a> = HashMap<&'a str, String>;
+
 /// The attributes of the tag `<name ...>` that starts at `s` (after the `<`), with the XML entities decoded.
-fn attrs(s: &str) -> HashMap<&str, String> {
+fn attrs(s: &str) -> Attrs<'_> {
     let mut out = HashMap::new();
     let end = s.find('>').unwrap_or(s.len());
     let mut rest = &s[..end];
@@ -51,7 +54,7 @@ pub fn from_sumo_net(xml: &str) -> Result<Lanes, String> {
     let mut offset = [0.0, 0.0];
     let mut utm = None;
     let mut via_from: HashMap<String, String> = HashMap::new();
-    let mut edges: Vec<(HashMap<&str, String>, Vec<HashMap<&str, String>>)> = Vec::new();
+    let mut edges: Vec<(Attrs, Vec<Attrs>)> = Vec::new();
     for tag in xml.split('<').skip(1) {
         let name = tag.split(|c: char| c.is_whitespace() || c == '>' || c == '/').next().unwrap_or("");
         match name {
